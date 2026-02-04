@@ -8,16 +8,15 @@ import {
   LoadingOutlined
 } from '@ant-design/icons'
 
-import MuxVideo from '@mux/mux-video-react';
 import { useParams } from 'react-router-dom';
 import { API_PREFIX } from '../config';
 
 import './LectureVideoAnalysis.css';
 
-import LectureChatBot from './lecture/LectureChatbot';
-import LectureTranscripts from './lecture/LectureTranscripts';
-import LectureSections from './lecture/LectureSections';
-import StreamVideo from './lecture/StreamVideo';
+import LectureChatBot from '../components/lecture/LectureChatbot';
+import LectureTranscripts from '../components/lecture/LectureTranscripts';
+import LectureSections from '../components/lecture/LectureSections';
+import StreamVideo from '../components/lecture/StreamVideo';
 
 interface LectureVideoAnalysisProps {
 

@@ -3,8 +3,12 @@ from rest_framework import generics, status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
-from .models import Video, Thumbnail, VideoTranscript, TranscriptSentence
-from .serializers import VideoSerializer, ThumbnailSerializer, VideoUploadSerializer, VideoTranscriptSerializer
+from .models import Video, Thumbnail, VideoTranscript, Episode, \
+    AsyncTaskItem
+
+from .serializers import VideoSerializer, ThumbnailSerializer, \
+    VideoUploadSerializer, VideoTranscriptSerializer, EpisodeSerializer, \
+    AsyncTaskItemSerializer
 
 class VideoListView(generics.ListAPIView):
     queryset = Video.objects.all()
@@ -54,3 +58,38 @@ class TranscriptDetailView(generics.ListAPIView):
         # Serialize the data
         serializer = VideoTranscriptSerializer(video_transcript)
         return Response(serializer.data)
+
+
+
+class EpisodeListView(generics.ListAPIView):
+    queryset = Episode.objects.all()
+    serializer_class = EpisodeSerializer
+
+class EpisodeDetailView(generics.RetrieveAPIView):
+    queryset = Episode.objects.all()
+    #queryset = Episode.objects.prefetch_related('videos')  # Optional optimization
+    serializer_class = EpisodeSerializer
+
+class EpisodeCreateView(generics.CreateAPIView):
+    queryset = Episode.objects.all()
+    serializer_class = EpisodeSerializer
+
+class EpisodeDeleteView(generics.DestroyAPIView):
+    """DELETE /episodes/<uuid:pk>/"""
+    queryset = Episode.objects.all()
+    serializer_class = EpisodeSerializer
+    
+class AsyncTaskItemCreateView(generics.CreateAPIView):
+    queryset = AsyncTaskItem.objects.all()
+    serializer_class = AsyncTaskItemSerializer
+
+class AsyncTaskItemDetailView(generics.RetrieveAPIView):
+    queryset = AsyncTaskItem.objects.all()
+    serializer_class = AsyncTaskItemSerializer
+
+class AsyncTaskItemsByVideoView(generics.ListAPIView):
+    serializer_class = AsyncTaskItemSerializer
+
+    def get_queryset(self):
+        video_id = self.kwargs['pk']
+        return AsyncTaskItem.objects.filter(video_id=video_id)

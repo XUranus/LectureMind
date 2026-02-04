@@ -39,7 +39,7 @@ const StreamVideo: React.FC<StreamVideoProps> = ({
 
   return (
     <MuxVideo
-        style={{ height: '100%', maxWidth: '100%' }}
+        style={{ height: '100%', width: '100%' }}
         src={src}
         metadata={{
           video_id: 'video-id-1456',

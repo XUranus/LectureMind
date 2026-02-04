@@ -10,48 +10,66 @@ import {
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BookOutlined,
+  CheckSquareOutlined,
 } from '@ant-design/icons';
 
 import type { MenuProps } from 'antd';
 
 import UploadVideo from './components/UploadVideo';
-import LectureVideoAnalysis from './components/LectureVideoAnalysis';
 import PlayGround from './components/PlayGround';
+
+import LectureVideoAnalysis from './page/LectureVideoAnalysis';
+import TaskDashboard from './page/TaskDashboard';
+import CourseDashboard from './page/CourseDashboard';
 
 const { Header, Sider, Content } = Layout;
 
 const menuItems: MenuProps['items'] = [
   {
-    key: '1',
+    key: 'Home',
     icon: <HomeOutlined />,
     label: 'Home',
   },
   {
-    key: '2',
-    icon: <VideoCameraOutlined />,
-    label: 'Video Analysis',
+    key: 'Courses',
+    icon: <BookOutlined />,
+    label: 'Courses',
   },
   {
-    key: '3',
-    icon: <SearchOutlined />,
-    label: 'Search',
-  },
-  {
-    key: '4',
-    icon: <SettingOutlined />,
-    label: 'Settings',
+    key: 'Tasks',
+    icon: <CheckSquareOutlined/>,
+    label: 'Tasks',
   },
 ];
 
-const Dashboard: React.FC = () => {
+
+const menuKey2Links: Record<string, string> = {
+  'Courses' : '/courses',
+  'Tasks' : '/tasks',
+  'Home' : '/',
+}
+
+
+const MainLayout: React.FC = () => {
+  const currentPath = window.location.pathname;
+  const defaultSelectedKey = Object.keys(menuKey2Links).find(
+    key => currentPath.startsWith(menuKey2Links[key])
+  ) || 'Home';
+
   const [collapsed, setCollapsed] = useState(true);
   const [uploadProgress, setUploadProgress] = useState(0);
-
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([defaultSelectedKey]);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
- 
-  
+
+  const onMenuSelect: MenuProps['onSelect'] = (e) => {
+    setSelectedKeys([e.key])
+    if (menuKey2Links[e.key]) {
+      location.href = menuKey2Links[e.key]
+    }
+  };
 
 
   return (
@@ -96,9 +114,11 @@ const Dashboard: React.FC = () => {
         >
           <Menu
             mode="inline"
-            defaultSelectedKeys={['1']}
+            defaultSelectedKeys={[defaultSelectedKey]}
             items={menuItems}
             className="border-r-0"
+            selectedKeys={selectedKeys}
+            onSelect={onMenuSelect}
           />
         </Sider>
 
@@ -110,10 +130,16 @@ const Dashboard: React.FC = () => {
                 path="/"
                 element={<UploadVideo setUploadProgress={setUploadProgress}/>} />
               <Route 
+                path="/courses"
+                element={<CourseDashboard/>} />
+              <Route 
+                path="/tasks"
+                element={<TaskDashboard/>} />
+              <Route 
                 path="/lecture/:videoId"
                 element={<LectureVideoAnalysis/>} />
               <Route 
-                path="/play"
+                path="/playground"
                 element={<PlayGround videoId="113514"/>} />
               {/* You can add more routes here */}
             </Routes>
@@ -124,4 +150,4 @@ const Dashboard: React.FC = () => {
   );
 };
 
-export default Dashboard;
+export default MainLayout;

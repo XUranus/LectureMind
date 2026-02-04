@@ -1,6 +1,6 @@
 # api/serializers.py
 from rest_framework import serializers
-from .models import Video, Thumbnail, VideoTranscript, TranscriptSentence
+from .models import Episode, Video, Thumbnail, VideoTranscript, TranscriptSentence, AsyncTaskItem
 
 class ThumbnailSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
@@ -21,12 +21,12 @@ class ThumbnailSerializer(serializers.ModelSerializer):
 
 class VideoSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
-    thumbnails = ThumbnailSerializer(many=True, read_only=True)
+    #thumbnails = ThumbnailSerializer(many=True, read_only=True)
     video_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Video
-        fields = ['id', 'title', 'video_url', 'duration', 'thumbnails']
+        fields = ['id', 'title', 'video_url', 'duration']
 
     def get_video_url(self, obj):
         if obj.file:
@@ -58,3 +58,21 @@ class VideoTranscriptSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoTranscript
         fields = ['video_id', 'file_url', 'format', 'sample_rate', 'sentences']
+
+
+class EpisodeSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    videos = VideoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Episode
+        fields = ['id', 'title', 'description', 'created_at', 'videos']
+
+
+class AsyncTaskItemSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+
+    class Meta:
+        model = AsyncTaskItem
+        fields = ['id', 'video', 'title', 'description', 'created_at', 'finished_at', 'payload', 'status']
+        read_only_fields = ['id', 'created_at', 'finished_at']  # id is auto-generated; timestamps managed by model

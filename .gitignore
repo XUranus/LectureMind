@@ -7,4 +7,5 @@ server/app/db.sqlite3
 server/app/api/migrations
 server/app/api/__pycache__
 server/app/api/management/__pycache__
+server/app/api/management/commands/__pycache__
 server/app/videoapp/__pycache__
