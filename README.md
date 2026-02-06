@@ -67,5 +67,6 @@ npm run dev
 
 # Backend setup
 pip install -r requirements.txt
-python manage.py runserver
+python manage.py runserver # start the API server
+python manage.py process_async_task # start the async task server
 ```

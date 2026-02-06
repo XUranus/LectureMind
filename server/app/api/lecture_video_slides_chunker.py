@@ -332,7 +332,7 @@ def detect_slide_changes_multithreaded(
 
 
 # Example usage (uncomment for testing)
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # changes = detect_slide_changes(
     #     video_path="/home/xuranus/Downloads/zoom.mp4",
     #     ssim_threshold=0.65,
@@ -340,12 +340,12 @@ if __name__ == "__main__":
     #     resize_width=480,
     #     sampling_fps=2.0
     # )
-    changes = detect_slide_changes_multithreaded(
-        video_path="/home/xuranus/Downloads/zoom.mp4",
-        ssim_threshold=0.7,
-        min_interval_sec=5.0,
-        resize_width=240,
-        sampling_fps=10.0,
-        num_workers=16,
-    ) 
-    print("Detected slide changes (seconds):", changes)
+    # changes = detect_slide_changes_multithreaded(
+    #     video_path="/home/xuranus/Downloads/zoom.mp4",
+    #     ssim_threshold=0.7,
+    #     min_interval_sec=5.0,
+    #     resize_width=240,
+    #     sampling_fps=10.0,
+    #     num_workers=16,
+    # ) 
+    # print("Detected slide changes (seconds):", changes)

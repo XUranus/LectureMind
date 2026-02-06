@@ -6,6 +6,26 @@ from pathlib import Path
 from typing import List, Dict, Union, Tuple, Optional
 from PIL import Image
 import shutil
+from urllib.parse import urlparse
+from django.conf import settings
+
+def get_local_file_path(relative_path: str) -> str:
+    """
+    Convert a media URL to an absolute local filesystem path.
+    
+    Args:
+        relative_path (str): relative path of the media file (e.g., 'videos/file.mp4')
+    
+    Returns:
+        str: Absolute local file path (e.g., '/var/www/myproject/media/videos/file.mp4')
+    
+    Raises:
+        ValueError: If URL doesn't belong to this site's MEDIA_URL
+    """
+    # Join with MEDIA_ROOT to get absolute path
+    local_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+
+    return os.path.abspath(local_path)
 
 
 def generate_thumbnails_for_video(
@@ -271,7 +291,7 @@ def generate_master_playlist(
     return str(master_path)
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # Example usage
 
     # 1. generate thumbnails
@@ -287,8 +307,6 @@ if __name__ == "__main__":
         #{'image_id': '4040a248-8f27-43dd-989f-d86d6ae0a37f', 'time_second': 446.4, 'image': '/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/thumbnails/4040a248-8f27-43dd-989f-d86d6ae0a37f.jpg'}
         #{'image_id': '52d939b0-5fb4-4c20-b7c9-fd076de8fee4', 'time_second': 591.84, 'image': '/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/thumbnails/52d939b0-5fb4-4c20-b7c9-fd076de8fee4.jpg'}
 
-
-
     # 2. generate HLS renditions
     # generate_hls_renditions(
     #     input_video_path="/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/videos/zoom.mp4",
@@ -297,8 +315,8 @@ if __name__ == "__main__":
     # )
 
     # 3. generate HLS master
-    generate_master_playlist(
-        video_id="114514",
-        output_root="./media/streams",
-        output_filename="master-stream.m3u8"
-    )
+    # generate_master_playlist(
+    #     video_id="114514",
+    #     output_root="./media/streams",
+    #     output_filename="master-stream.m3u8"
+    # )

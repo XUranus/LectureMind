@@ -137,3 +137,47 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# settings.py
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] [{asctime}] [{name}] {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'task_processor': {
+            'format': '[TASK] [{levelname}] [{asctime}] [{message}]',
+            'style': '{',
+            'datefmt': '%H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'task_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/task_processor.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'task_processor',
+            'level': 'DEBUG',
+        },
+    },
+    'loggers': {
+        'polyu-video': {  # Replace with your actual app name
+            'handlers': ['console', 'task_file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
