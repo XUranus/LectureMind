@@ -2,25 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Card, Spin, List } from 'antd';
 import { API_PREFIX } from '../../config';
-
-// Define TypeScript interfaces for type safety
-interface Sentence {
-  channel_id: number;
-  sentence_id: number;
-  begin_time: number; // in milliseconds
-  end_time: number;   // in milliseconds
-  language: string;
-  emotion: string;
-  text: string;
-}
-
-interface TranscriptData {
-  video_id: string;
-  file_url: string;
-  format: string;
-  sample_rate: number;
-  sentences: Sentence[];
-}
+import { TranscriptData } from '../../model'
 
 // Helper function to format milliseconds to mm:ss
 const formatTime = (milliseconds: number): string => {

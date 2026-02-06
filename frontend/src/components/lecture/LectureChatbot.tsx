@@ -1,8 +1,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Button, Spin, Tabs } from 'antd';
-import { LoadingOutlined } from '@ant-design/icons';
-
+import {} from '../../model'
 
 interface LectureChatBotProps {
   videoId: string | undefined;

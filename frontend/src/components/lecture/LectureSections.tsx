@@ -2,13 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Card, Spin, List } from 'antd';
 import { API_PREFIX } from '../../config';
+import { Section } from '../../model'
 
-// Define TypeScript interfaces for type safety
-interface Section {
-  id: number;
-  begin_time: number; // in seconds
-  text: string;
-}
 
 interface LectureSectionsProps {
   videoId?: string;

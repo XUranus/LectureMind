@@ -3,24 +3,9 @@ import { Card, message, Modal } from 'antd';
 import { API_PREFIX } from '../config';
 import CourseCreationModal from '../components/lecture/CourseCreationModal';
 import { DeleteOutlined } from '@ant-design/icons';
+import { Course } from '../model'
 
-// Define TypeScript interfaces
-export interface Video {
-  id: string;
-  cover: string;
-  title: string;
-  video_url: string;
-  duration: number;
-}
-
-export interface Course {
-  id: string;
-  title: string;
-  description: string;
-  created_at: string;
-  videos: Video[];
-}
-
+const DEFAULT_COVER = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="170" viewBox="0 0 300 170"><rect width="100%" height="100%" fill="%23f0f0f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="16" fill="%23999">No Cover</text></svg>`;
 
 const CourseDashboard: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -142,9 +127,10 @@ const CourseCard: React.FC<{ episode: Course, onDeleted: (id : string)=>void }> 
               className="flex-shrink-0 w-28 h-20 relative group cursor-pointer"
             >
               <img
-                src={video.cover}
+                src={video.cover.length == 0 ? DEFAULT_COVER : video.cover}
                 alt={video.title}
                 className="w-full h-full object-cover rounded border border-gray-200"
+                onClick={()=>{location.href=`/lecture/${video.id}`}}
               />
               {/* Optional: hover overlay or play icon could go here */}
             </div>

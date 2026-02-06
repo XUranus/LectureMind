@@ -85,7 +85,8 @@ const VideoTaskPanel: React.FC<VideoTaskPanelProps> = ({ videoGroups }) => {
               activeKey={activeKeys}
               onChange={handleCollapseChange}
               bordered={false}
-              expandIconPosition="end"
+              expandIconPlacement='start'
+              
               items={[
                 {
                   key: group.videoId,

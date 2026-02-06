@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Button, Modal, Form, Input, Spin, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { API_PREFIX } from '../../config';
-import { Course } from '../../page/CourseDashboard';
+import { Course } from '../../model';
 
 
 export interface CourseCreationModalProps {
@@ -27,7 +27,7 @@ const CourseCreationModal: React.FC<CourseCreationModalProps> = ({addCourse}) =>
   const createCourseAPI = async (course : Course) => {
     console.log('new course: ', course)
     try {
-        const response = await fetch(`${API_PREFIX}/api/episodes/new`, {
+        const response = await fetch(`${API_PREFIX}/api/episodes/new/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

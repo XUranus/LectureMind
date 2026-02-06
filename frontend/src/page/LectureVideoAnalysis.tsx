@@ -18,14 +18,10 @@ import LectureTranscripts from '../components/lecture/LectureTranscripts';
 import LectureSections from '../components/lecture/LectureSections';
 import StreamVideo from '../components/lecture/StreamVideo';
 
+import { ThumbnailItem } from '../model'
+
 interface LectureVideoAnalysisProps {
 
-}
-
-export interface ThumbnailItem {
-  id: string;
-  timeSecond: number; // camelCase
-  imageUrl: string;
 }
 
 interface ThumbnailScrollerProps {
@@ -176,7 +172,7 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
           <div className="w-full rounded-xl object-contain">
               <StreamVideo
                 videoRef={videoRef}
-                src={"http://localhost:8000/media/streams/114514/master-stream.m3u8"}
+                src={`${API_PREFIX}/media/streams/${videoId}/master-stream.m3u8`}
               />
               <ThumbnailScroller
                 handleThumbnailClick={jumpVideoTime}

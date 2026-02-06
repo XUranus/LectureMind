@@ -6,8 +6,6 @@ import { Layout, Menu, Button, Progress } from 'antd';
 import { 
   HomeOutlined, 
   VideoCameraOutlined, 
-  SearchOutlined, 
-  SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BookOutlined,
@@ -16,12 +14,13 @@ import {
 
 import type { MenuProps } from 'antd';
 
-import UploadVideo from './components/UploadVideo';
 import PlayGround from './components/PlayGround';
-
 import LectureVideoAnalysis from './page/LectureVideoAnalysis';
+
+import UploadDashboard from './page/UploadDashboard';
 import TaskDashboard from './page/TaskDashboard';
 import CourseDashboard from './page/CourseDashboard';
+import VideoDashboard from './page/VideoDashboard'
 
 const { Header, Sider, Content } = Layout;
 
@@ -30,6 +29,11 @@ const menuItems: MenuProps['items'] = [
     key: 'Home',
     icon: <HomeOutlined />,
     label: 'Home',
+  },
+  {
+    key : 'Videos',
+    icon: <VideoCameraOutlined/>,
+    label: 'Videos'
   },
   {
     key: 'Courses',
@@ -45,6 +49,7 @@ const menuItems: MenuProps['items'] = [
 
 
 const menuKey2Links: Record<string, string> = {
+  'Videos' : '/videos',
   'Courses' : '/courses',
   'Tasks' : '/tasks',
   'Home' : '/',
@@ -128,13 +133,16 @@ const MainLayout: React.FC = () => {
             <Routes>
               <Route 
                 path="/"
-                element={<UploadVideo setUploadProgress={setUploadProgress}/>} />
+                element={<UploadDashboard setUploadProgress={setUploadProgress}/>} />
               <Route 
                 path="/courses"
                 element={<CourseDashboard/>} />
               <Route 
                 path="/tasks"
                 element={<TaskDashboard/>} />
+              <Route 
+                path="/videos"
+                element={<VideoDashboard/>} />
               <Route 
                 path="/lecture/:videoId"
                 element={<LectureVideoAnalysis/>} />
