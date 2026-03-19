@@ -142,7 +142,7 @@ def generate_hls_renditions(
     input_video_path: str,
     video_id: str,
     output_root: str = "/output",
-    resolutions: List[Tuple[int, int]] = [(1920, 1080), (1280, 720), (854, 480), (640, 360)],
+    resolutions: List[Tuple[int, int]] = [(1920, 1080)], #[(1920, 1080), (1280, 720), (854, 480), (640, 360)],
     hls_time: int = 4,
     hls_list_size: int = 0,  # keep all segments in playlist
     video_codec: str = "libx264",

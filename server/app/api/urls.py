@@ -32,6 +32,9 @@ urlpatterns = [
     # Agent Chat (LangGraph)
     path('videos/<uuid:video_id>/agent/stream/', views.agent_chat_stream_view, name='agent-stream'),
 
+    # Course Agent Chat
+    path('episodes/<uuid:episode_id>/agent/stream/', views.course_agent_stream_view, name='course-agent-stream'),
+
     # Sections
     path('sections/<uuid:section_id>/knowledge/', views.KnowledgePointsBySectionView.as_view(), name='section-knowledge'),
 
