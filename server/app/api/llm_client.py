@@ -20,6 +20,48 @@ from typing import Dict, Any, List, Optional, Generator
 
 logger = logging.getLogger('polyu-video')
 
+
+# ======================
+# LLM CALL LOGGER
+# ======================
+import datetime
+from pathlib import Path
+
+def _log_llm_call(
+    method: str,
+    messages: list,
+    response_text: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    usage: dict = None,
+    error: str = None,
+    duration_ms: float = None,
+):
+    """Log every LLM call to an independent file for debugging."""
+    try:
+        log_dir = Path(__file__).resolve().parent.parent / "logs" / "llm_calls"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        log_file = log_dir / f"{ts}_{method}.json"
+        log_entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "method": method,
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": messages,
+            "response": response_text[:5000] if response_text else None,
+            "usage": usage,
+            "error": error,
+            "duration_ms": duration_ms,
+        }
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(log_entry, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        logger.debug(f"Failed to log LLM call: {e}")
+
+
 # Default configuration
 DEFAULT_MODEL = "qwen2.5-7b-instruct"
 DEFAULT_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -138,16 +180,40 @@ class LLMClient:
         if response_format == "json":
             kwargs["response_format"] = {"type": "json_object"}
 
+        import time as _time
+        _t0 = _time.time()
         try:
             response = self._client.chat.completions.create(**kwargs)
-            content = response.choices[0].message.content
-            logger.debug(
+            resp_content = response.choices[0].message.content or ""
+            _dur = (_time.time() - _t0) * 1000
+            usage_dict = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            } if response.usage else None
+            logger.info(
                 f"LLM response: model={self.model}, "
-                f"tokens={response.usage.total_tokens if response.usage else 'N/A'}"
+                f"tokens={response.usage.total_tokens if response.usage else 'N/A'}, "
+                f"duration={_dur:.0f}ms"
             )
-            return content or ""
+            _log_llm_call(
+                method="chat_messages", messages=messages,
+                response_text=resp_content, model=self.model,
+                temperature=kwargs.get("temperature", self.temperature),
+                max_tokens=kwargs.get("max_tokens", self.max_tokens),
+                usage=usage_dict, duration_ms=_dur,
+            )
+            return resp_content
         except Exception as e:
+            _dur = (_time.time() - _t0) * 1000
             logger.error(f"LLM API call failed: {e}")
+            _log_llm_call(
+                method="chat_messages", messages=messages,
+                response_text="", model=self.model,
+                temperature=kwargs.get("temperature", self.temperature),
+                max_tokens=kwargs.get("max_tokens", self.max_tokens),
+                error=str(e), duration_ms=_dur,
+            )
             raise RuntimeError(f"LLM API call failed: {e}") from e
 
     def stream_chat(

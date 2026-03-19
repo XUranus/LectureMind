@@ -14,6 +14,7 @@ import LectureKnowledge from '../components/lecture/LectureKnowledge';
 import LectureSummary from '../components/lecture/LectureSummary';
 import LectureMindmap from '../components/lecture/LectureMindmap';
 import StreamVideo from '../components/lecture/StreamVideo';
+import VideoTaskStatus from '../components/lecture/VideoTaskStatus';
 
 import { ThumbnailItem } from '../model';
 
@@ -125,6 +126,9 @@ const LectureVideoAnalysis: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row gap-4" style={{ height: 'calc(100vh - 100px)' }}>
+      {/* Task status */}
+      <VideoTaskStatus videoId={videoId} />
+
       {/* Left: Video + Thumbnails */}
       <div className="lg:w-1/2 flex flex-col shrink-0">
         {isProcessing ? (

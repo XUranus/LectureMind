@@ -138,7 +138,11 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# settings.py
+# Unified logging — both web server and task worker write to the same log directory
+import os as _os
+LOG_DIR = _os.path.join(BASE_DIR, 'logs')
+_os.makedirs(LOG_DIR, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -148,36 +152,52 @@ LOGGING = {
             'style': '{',
             'datefmt': '%Y-%m-%d %H:%M:%S',
         },
-        'task_processor': {
-            'format': '[TASK] [{levelname}] [{asctime}] [{message}]',
-            'style': '{',
-            'datefmt': '%H:%M:%S',
-        },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
+        'app_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': _os.path.join(LOG_DIR, 'app.log'),
+            'maxBytes': 20 * 1024 * 1024,  # 20 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'level': 'DEBUG',
+        },
         'task_file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'logs/task_processor.log',
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'filename': _os.path.join(LOG_DIR, 'task_processor.log'),
+            'maxBytes': 20 * 1024 * 1024,
             'backupCount': 5,
-            'formatter': 'task_processor',
+            'formatter': 'verbose',
             'level': 'DEBUG',
+        },
+        'error_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': _os.path.join(LOG_DIR, 'errors.log'),
+            'maxBytes': 10 * 1024 * 1024,
+            'backupCount': 3,
+            'formatter': 'verbose',
+            'level': 'ERROR',
         },
     },
     'loggers': {
-        'polyu-video': {  # Replace with your actual app name
-            'handlers': ['console', 'task_file'],
+        'polyu-video': {
+            'handlers': ['console', 'app_file', 'task_file', 'error_file'],
             'level': 'DEBUG',
-            'propagate': True,
+            'propagate': False,
         },
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'app_file'],
             'level': 'INFO',
             'propagate': True,
+        },
+        'django.request': {
+            'handlers': ['console', 'app_file', 'error_file'],
+            'level': 'WARNING',
+            'propagate': False,
         },
     },
 }

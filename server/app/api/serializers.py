@@ -157,5 +157,5 @@ class AsyncTaskItemSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     class Meta:
         model = AsyncTaskItem
-        fields = ['id', 'video', 'title', 'description', 'created_at', 'finished_at', 'status']
+        fields = ['id', 'video', 'title', 'description', 'func_name', 'result', 'previous', 'created_at', 'finished_at', 'status']
         read_only_fields = ['id', 'created_at', 'finished_at']

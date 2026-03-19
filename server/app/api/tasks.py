@@ -302,32 +302,82 @@ def _tree_to_react_flow(tree: Dict[str, Any], x: float = 0, y: float = 0,
 # ======================
 
 def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    import subprocess
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
-    logger.info(f"[ASR] Processing {video_id}")
+    logger.info(f"[ASR] Processing video_id={video_id}, file={video_file}")
 
-    from pydub import AudioSegment
+    if not os.path.isfile(video_file):
+        raise FileNotFoundError(f"Video file not found: {video_file}")
+
+    # --- Extract audio using ffmpeg (robust, no pydub dependency) ---
     wav_file = os.path.join(settings.MEDIA_ROOT, "audio", f"{video_id}.wav")
     os.makedirs(os.path.dirname(wav_file), exist_ok=True)
-    audio = AudioSegment.from_file(video_file, format="mp4")
-    audio = audio.set_frame_rate(16000).set_channels(1)
-    audio.export(wav_file, format="wav")
 
+    # Check if video has an audio stream
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-select_streams", "a",
+        "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+        video_file,
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+    has_audio = bool(probe_result.stdout.strip())
+
+    if not has_audio:
+        raise RuntimeError(
+            f"Video file has no audio stream: {video_file}. "
+            "ASR requires an audio track. Please upload a video with audio."
+        )
+
+    # Extract audio to WAV (16kHz mono)
+    extract_cmd = [
+        "ffmpeg", "-y", "-i", video_file,
+        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        wav_file,
+    ]
+    logger.info(f"[ASR] Extracting audio: {' '.join(extract_cmd)}")
+    result = subprocess.run(extract_cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg audio extraction failed: {result.stderr[:500]}")
+
+    if not os.path.isfile(wav_file) or os.path.getsize(wav_file) == 0:
+        raise RuntimeError(f"Audio extraction produced empty file: {wav_file}")
+    logger.info(f"[ASR] Audio extracted: {wav_file} ({os.path.getsize(wav_file)} bytes)")
+
+    # --- Upload to Tencent COS ---
     from qcloud_cos import CosConfig, CosS3Client
-    config = CosConfig(
-        Region=os.environ['COS_REGION'],
-        SecretId=os.environ['COS_SECRECT_ID'],
-        SecretKey=os.environ['COS_SECRECT_KEY']
-    )
-    client = CosS3Client(config)
-    bucket = os.environ['COS_BUCKET']
-    cos_key = f'audio/{video_id}.wav'
-    client.upload_file(Bucket=bucket, LocalFilePath=wav_file, Key=cos_key)
-    signed_url = client.get_presigned_url(Method='GET', Bucket=bucket, Key=cos_key, Expired=3600)
+    cos_region = os.environ.get('COS_REGION', '')
+    cos_id = os.environ.get('COS_SECRECT_ID', '')
+    cos_key_env = os.environ.get('COS_SECRECT_KEY', '')
+    cos_bucket = os.environ.get('COS_BUCKET', '')
+    if not all([cos_region, cos_id, cos_key_env, cos_bucket]):
+        raise RuntimeError(
+            "COS credentials not configured. Required env vars: "
+            "COS_REGION, COS_SECRECT_ID, COS_SECRECT_KEY, COS_BUCKET"
+        )
 
+    config = CosConfig(Region=cos_region, SecretId=cos_id, SecretKey=cos_key_env)
+    client = CosS3Client(config)
+    cos_key = f'audio/{video_id}.wav'
+    logger.info(f"[ASR] Uploading to COS: bucket={cos_bucket}, key={cos_key}")
+    client.upload_file(Bucket=cos_bucket, LocalFilePath=wav_file, Key=cos_key)
+    signed_url = client.get_presigned_url(Method='GET', Bucket=cos_bucket, Key=cos_key, Expired=3600)
+    logger.info(f"[ASR] COS upload complete, signed_url length={len(signed_url)}")
+
+    # --- ASR transcription via DashScope ---
     asr_client = DashScopeASRClient(region="beijing")
+    logger.info(f"[ASR] Submitting to DashScope ASR...")
     transcript = asr_client.transcribe_audio(file_url=signed_url, language="en", timeout=600.0)
+
+    # Log ASR result structure for debugging
+    logger.info(
+        f"[ASR] Transcript received: "
+        f"transcripts={len(transcript.get('transcripts', []))}, "
+        f"keys={list(transcript.keys())}"
+    )
+
     save_transcript(video_id, transcript)
+    logger.info(f"[ASR] Transcript saved for video {video_id}")
     return {"video_id": video_id, "file": input_data['file'], "cos_audio_url": signed_url}
 
 
