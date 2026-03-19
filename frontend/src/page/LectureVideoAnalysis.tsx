@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Spin, Tabs } from 'antd';
 import type { TabsProps } from 'antd';
 import { LoadingOutlined } from '@ant-design/icons';
@@ -46,7 +46,7 @@ const ThumbnailScroller: React.FC<ThumbnailScrollerProps> = ({ thumbnails, handl
   </div>
 );
 
-// Tab content wrapper — properly sized
+// Tab content wrapper
 const TabPane: React.FC<{ children: React.ReactNode; scroll?: boolean; pad?: boolean }> = ({
   children, scroll = true, pad = false,
 }) => (
@@ -62,30 +62,76 @@ const LectureVideoAnalysis: React.FC = () => {
   const [thumbnails, setThumbnails] = useState<ThumbnailItem[]>([]);
   const { videoId } = useParams();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const isProcessing = false;
 
-  const jumpVideoTime = (time: number) => {
+  // Current video playback time (updated every ~500ms)
+  const [currentTime, setCurrentTime] = useState(0);
+
+  const jumpVideoTime = useCallback((time: number) => {
     if (videoRef.current) {
       videoRef.current.currentTime = time;
       videoRef.current.play();
     }
-  };
+  }, []);
+
+  // Track video currentTime for bidirectional sync
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let raf: number;
+    const onTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
+    };
+    // Use timeupdate event (fires ~4x/sec)
+    video.addEventListener('timeupdate', onTimeUpdate);
+    // Also fires on seek
+    video.addEventListener('seeked', onTimeUpdate);
+
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('seeked', onTimeUpdate);
+    };
+  }, [videoRef.current]); // re-bind when ref resolves
 
   const rightTabItems: TabsProps['items'] = [
     {
       key: '1',
       label: 'Transcript',
-      children: <TabPane><LectureTranscripts videoId={videoId} handleItemClick={jumpVideoTime} /></TabPane>,
+      children: (
+        <TabPane>
+          <LectureTranscripts
+            videoId={videoId}
+            handleItemClick={jumpVideoTime}
+            currentTime={currentTime}
+          />
+        </TabPane>
+      ),
     },
     {
       key: '2',
       label: 'Sections',
-      children: <TabPane pad><LectureSections handleItemClick={jumpVideoTime} videoId={videoId} /></TabPane>,
+      children: (
+        <TabPane pad>
+          <LectureSections
+            handleItemClick={jumpVideoTime}
+            videoId={videoId}
+            currentTime={currentTime}
+          />
+        </TabPane>
+      ),
     },
     {
       key: '3',
       label: 'Knowledge',
-      children: <TabPane pad><LectureKnowledge handleItemClick={jumpVideoTime} videoId={videoId} /></TabPane>,
+      children: (
+        <TabPane pad>
+          <LectureKnowledge
+            handleItemClick={jumpVideoTime}
+            videoId={videoId}
+            currentTime={currentTime}
+          />
+        </TabPane>
+      ),
     },
     {
       key: '4',
@@ -125,32 +171,27 @@ const LectureVideoAnalysis: React.FC = () => {
   }, [videoId]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4" style={{ height: 'calc(100vh - 100px)' }}>
-      {/* Task status */}
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 100px)' }}>
+      {/* Task status banner */}
       <VideoTaskStatus videoId={videoId} />
 
-      {/* Left: Video + Thumbnails */}
-      <div className="lg:w-1/2 flex flex-col shrink-0">
-        {isProcessing ? (
-          <div className="flex items-center justify-center h-64">
-            <Spin size="large" tip="Processing..." indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />} />
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+        {/* Left: Video + Thumbnails */}
+        <div className="lg:w-1/2 flex flex-col shrink-0">
+          <div className="w-full rounded-xl overflow-hidden bg-black">
+            <StreamVideo
+              videoRef={videoRef}
+              src={`${API_PREFIX}/media/streams/${videoId}/master-stream.m3u8`}
+              fallbackSrc={`${API_PREFIX}/media/videos/${videoId}.mp4`}
+            />
           </div>
-        ) : (
-          <>
-            <div className="w-full rounded-xl overflow-hidden bg-black">
-              <StreamVideo
-                videoRef={videoRef}
-                src={`${API_PREFIX}/media/streams/${videoId}/master-stream.m3u8`}
-              />
-            </div>
-            <ThumbnailScroller handleThumbnailClick={jumpVideoTime} thumbnails={thumbnails} />
-          </>
-        )}
-      </div>
+          <ThumbnailScroller handleThumbnailClick={jumpVideoTime} thumbnails={thumbnails} />
+        </div>
 
-      {/* Right: Tabs */}
-      <div className="lg:w-1/2 flex flex-col min-h-0 overflow-hidden">
-        <Tabs animated items={rightTabItems} className="w-full h-full" defaultActiveKey="1" />
+        {/* Right: Tabs */}
+        <div className="lg:w-1/2 flex flex-col min-h-0 overflow-hidden">
+          <Tabs animated items={rightTabItems} className="w-full h-full" defaultActiveKey="1" />
+        </div>
       </div>
     </div>
   );

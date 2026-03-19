@@ -49,6 +49,7 @@ urlpatterns = [
     path('tasks/video/<uuid:pk>/', views.AsyncTaskItemsByVideoView.as_view(), name='task-list'),
     path('tasks/new/', views.AsyncTaskItemCreateView.as_view(), name='new-task-list'),
     path('tasks/<uuid:pk>/', views.AsyncTaskItemDetailView.as_view(), name='task-detail'),
+    path('tasks/<uuid:pk>/retry/', views.task_retry_view, name='task-retry'),
 ]
 
 if settings.DEBUG:

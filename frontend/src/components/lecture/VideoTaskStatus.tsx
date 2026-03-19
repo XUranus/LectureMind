@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Tag, Tooltip, Collapse, Spin } from 'antd';
+import { Alert, Tag, Tooltip, Spin, Button, message } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -45,6 +45,7 @@ interface VideoTaskStatusProps {
 const VideoTaskStatus: React.FC<VideoTaskStatusProps> = ({ videoId }) => {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
   const fetchTasks = async () => {
     if (!videoId) return;
@@ -67,6 +68,28 @@ const VideoTaskStatus: React.FC<VideoTaskStatusProps> = ({ videoId }) => {
     return () => clearInterval(interval);
   }, [videoId]);
 
+  const handleRetry = async (taskId: string) => {
+    setRetrying(taskId);
+    try {
+      const res = await fetch(`${API_PREFIX}/api/tasks/${taskId}/retry/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        message.success(`${data.message}. Tasks will be picked up by the processor.`);
+        await fetchTasks();
+      } else {
+        const err = await res.json();
+        message.error(err.error || 'Retry failed');
+      }
+    } catch (e) {
+      message.error('Network error during retry');
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   if (loading || tasks.length === 0) return null;
 
   const hasError = tasks.some(t => t.status === 'error');
@@ -74,7 +97,18 @@ const VideoTaskStatus: React.FC<VideoTaskStatusProps> = ({ videoId }) => {
   const isRunning = tasks.some(t => t.status === 'running');
   const doneCount = tasks.filter(t => t.status === 'done').length;
 
-  if (allDone) return null; // Don't show when everything is complete
+  if (allDone) return null;
+
+  // Find the root failed task (the first error without cascade)
+  const rootFailedTask = tasks.find(t => {
+    if (t.status !== 'error' || !t.result) return false;
+    try {
+      const r = JSON.parse(t.result);
+      return r.error_type !== 'CascadeFailure';
+    } catch {
+      return true;
+    }
+  });
 
   return (
     <div className="mb-3">
@@ -87,9 +121,21 @@ const VideoTaskStatus: React.FC<VideoTaskStatusProps> = ({ videoId }) => {
             <span className="font-medium">
               {hasError ? 'Processing has errors' : isRunning ? 'Processing in progress...' : 'Processing pending'}
             </span>
-            <span className="text-sm text-gray-500">
-              {doneCount}/{tasks.length} steps complete
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">{doneCount}/{tasks.length} steps</span>
+              {hasError && rootFailedTask && (
+                <Button
+                  size="small"
+                  type="primary"
+                  danger
+                  icon={<ReloadOutlined />}
+                  loading={retrying === rootFailedTask.id}
+                  onClick={() => handleRetry(rootFailedTask.id)}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
           </div>
         }
         description={
@@ -108,6 +154,18 @@ const VideoTaskStatus: React.FC<VideoTaskStatusProps> = ({ videoId }) => {
                         {err.type === 'CascadeFailure' ? 'Blocked' : err.type}
                       </Tag>
                     </Tooltip>
+                  )}
+                  {task.status === 'error' && err?.type !== 'CascadeFailure' && task.id !== rootFailedTask?.id && (
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<ReloadOutlined />}
+                      loading={retrying === task.id}
+                      onClick={(e) => { e.stopPropagation(); handleRetry(task.id); }}
+                      className="p-0 h-auto"
+                    >
+                      Retry
+                    </Button>
                   )}
                 </div>
               );
