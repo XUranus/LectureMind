@@ -1,3 +1,4 @@
+.env
 frontend/node_modules
 target/
 server/demo
@@ -9,3 +10,7 @@ server/app/api/__pycache__
 server/app/api/management/__pycache__
 server/app/api/management/commands/__pycache__
 server/app/videoapp/__pycache__
+server/app/logs
+server/app/*.log
+doc/
+opencode.json

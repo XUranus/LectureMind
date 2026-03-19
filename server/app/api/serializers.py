@@ -1,155 +1,152 @@
 # api/serializers.py
 from typing import Any, Dict, Optional
-
 from rest_framework import serializers
-from django.core.exceptions import ValidationError
-
 from .models import (
-    Episode,
-    Video,
-    Thumbnail,
-    VideoTranscript,
-    TranscriptSentence,
-    AsyncTaskItem,
+    Episode, Video, Thumbnail, VideoTranscript, TranscriptSentence,
+    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap,
+    ChatSession, ChatMessage, AsyncTaskItem,
 )
 
 
 class ThumbnailSerializer(serializers.ModelSerializer):
-    """Serialize thumbnail metadata with absolute image URL."""
     id = serializers.UUIDField(read_only=True)
     image_url = serializers.SerializerMethodField()
-
     class Meta:
         model = Thumbnail
         fields = ['id', 'time_second', 'image_url']
-
-    def get_image_url(self, obj: Thumbnail) -> Optional[str]:
-        """
-        Return the absolute URL of the thumbnail image if available.
-
-        Args:
-            obj (Thumbnail): The thumbnail instance.
-
-        Returns:
-            Optional[str]: Absolute image URL or None if no image.
-        """
-        if not obj.image:
-            return None
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(obj.image.url)
-        return obj.image.url
+    def get_image_url(self, obj):
+        if not obj.image: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.image.url) if req else obj.image.url
 
 
 class VideoSerializer(serializers.ModelSerializer):
-    """Serialize video metadata with absolute video file URL."""
     id = serializers.UUIDField(read_only=True)
     video_url = serializers.SerializerMethodField()
-
     class Meta:
         model = Video
         fields = ['id', 'cover', 'title', 'video_url', 'duration']
         read_only_fields = ['id', 'cover', 'video_url', 'duration']
-
-    def get_video_url(self, obj: Video) -> Optional[str]:
-        """
-        Return the absolute URL to the video file.
-
-        Args:
-            obj (Video): The video instance.
-
-        Returns:
-            Optional[str]: Absolute video URL or None if no file.
-        """
-        if not obj.file:
-            return None
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(obj.file.url)
-        return obj.file.url
+    def get_video_url(self, obj):
+        if not obj.file: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.file.url) if req else obj.file.url
 
 
 class VideoUploadSerializer(serializers.ModelSerializer):
-    """
-    Serializer for uploading a new video.
-    
-    Accepts only title, file, and episode during creation.
-    On output, returns full video representation via VideoSerializer.
-    """
-
     class Meta:
         model = Video
         fields = ['title', 'file', 'episode']
-
-    def to_representation(self, instance: Video) -> Dict[str, Any]:
-        """Use VideoSerializer for output representation."""
+    def to_representation(self, instance):
         return VideoSerializer(instance, context=self.context).data
 
 
 class TriggerTaskSerializer(serializers.Serializer):
-    """
-    Serializer to validate a request to trigger async processing for a video.
-    
-    Expects a valid UUID of an existing video.
-    """
     id = serializers.UUIDField()
-
-    def validate_id(self, value: str) -> str:
-        """
-        Validate that a Video with the given ID exists.
-
-        Note: Field name is 'id', so validator must be `validate_id`, not `validate_video_id`.
-
-        Args:
-            value (str): UUID string of the video.
-
-        Returns:
-            str: Validated video ID.
-
-        Raises:
-            serializers.ValidationError: If video does not exist.
-        """
+    def validate_id(self, value):
         if not Video.objects.filter(id=value).exists():
             raise serializers.ValidationError("Video with this ID does not exist.")
         return value
 
 
 class TranscriptSentenceSerializer(serializers.ModelSerializer):
-    """Serialize individual transcript sentences."""
-
     class Meta:
         model = TranscriptSentence
-        fields = [
-            'channel_id',
-            'sentence_id',
-            'begin_time',
-            'end_time',
-            'language',
-            'emotion',
-            'text'
-        ]
+        fields = ['channel_id', 'sentence_id', 'begin_time', 'end_time', 'language', 'emotion', 'text']
 
 
 class VideoTranscriptSerializer(serializers.ModelSerializer):
-    """Serialize full video transcript including all sentences."""
     sentences = TranscriptSentenceSerializer(many=True, read_only=True)
-
     class Meta:
         model = VideoTranscript
-        fields = [
-            'video_id',
-            'file_url',
-            'format',
-            'sample_rate',
-            'sentences'
-        ]
+        fields = ['video_id', 'file_url', 'format', 'sample_rate', 'sentences']
+
+
+class VideoSectionSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    class Meta:
+        model = VideoSection
+        fields = ['id', 'video', 'title', 'begin_time', 'end_time', 'transcript_text', 'thumbnail_url', 'order']
+        read_only_fields = ['id']
+    def get_thumbnail_url(self, obj):
+        if not obj.thumbnail or not obj.thumbnail.image: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.thumbnail.image.url) if req else obj.thumbnail.image.url
+
+
+class KnowledgePointSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    section_title = serializers.CharField(source='section.title', read_only=True)
+    section_order = serializers.IntegerField(source='section.order', read_only=True)
+    begin_time = serializers.FloatField(source='section.begin_time', read_only=True)
+    end_time = serializers.FloatField(source='section.end_time', read_only=True)
+    class Meta:
+        model = KnowledgePoint
+        fields = ['id', 'section', 'video', 'title', 'summary', 'key_terms', 'importance', 'created_at',
+                  'section_title', 'section_order', 'begin_time', 'end_time']
+        read_only_fields = ['id', 'created_at']
+
+
+class SectionWithKnowledgeSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    knowledge_points = KnowledgePointSerializer(many=True, read_only=True)
+    class Meta:
+        model = VideoSection
+        fields = ['id', 'video', 'title', 'begin_time', 'end_time', 'transcript_text', 'thumbnail_url', 'order', 'knowledge_points']
+        read_only_fields = ['id']
+    def get_thumbnail_url(self, obj):
+        if not obj.thumbnail or not obj.thumbnail.image: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.thumbnail.image.url) if req else obj.thumbnail.image.url
+
+
+class KnowledgeSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KnowledgeSummary
+        fields = ['video', 'overview', 'key_topics', 'learning_objectives', 'prerequisites', 'difficulty_level', 'created_at', 'updated_at']
+        read_only_fields = ['video', 'created_at', 'updated_at']
+
+
+class KnowledgeMindmapSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KnowledgeMindmap
+        fields = ['video', 'tree_data', 'react_flow_nodes', 'react_flow_edges', 'created_at', 'updated_at']
+        read_only_fields = ['video', 'created_at', 'updated_at']
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    class Meta:
+        model = ChatMessage
+        fields = ['id', 'session', 'role', 'content', 'citations', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class ChatSessionSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    message_count = serializers.SerializerMethodField()
+    class Meta:
+        model = ChatSession
+        fields = ['id', 'video', 'title', 'created_at', 'updated_at', 'message_count']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    def get_message_count(self, obj):
+        return obj.messages.count()
+
+
+class ChatSessionDetailSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    messages = ChatMessageSerializer(many=True, read_only=True)
+    class Meta:
+        model = ChatSession
+        fields = ['id', 'video', 'title', 'created_at', 'updated_at', 'messages']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class EpisodeSerializer(serializers.ModelSerializer):
-    """Serialize episode with nested videos."""
     id = serializers.UUIDField(read_only=True)
     videos = VideoSerializer(many=True, read_only=True)
-
     class Meta:
         model = Episode
         fields = ['id', 'title', 'description', 'created_at', 'videos']
@@ -157,18 +154,8 @@ class EpisodeSerializer(serializers.ModelSerializer):
 
 
 class AsyncTaskItemSerializer(serializers.ModelSerializer):
-    """Serialize async task items with read-only metadata."""
     id = serializers.UUIDField(read_only=True)
-
     class Meta:
         model = AsyncTaskItem
-        fields = [
-            'id',
-            'video',
-            'title',
-            'description',
-            'created_at',
-            'finished_at',
-            'status'
-        ]
+        fields = ['id', 'video', 'title', 'description', 'func_name', 'result', 'previous', 'created_at', 'finished_at', 'status']
         read_only_fields = ['id', 'created_at', 'finished_at']

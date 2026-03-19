@@ -1,14 +1,23 @@
 
-import { useState, useRef, useEffect } from 'react';
-import { Card, Spin, List } from 'antd';
+import { useState, useEffect } from 'react';
+import { Spin, List, Tag, Empty } from 'antd';
+import { ClockCircleOutlined } from '@ant-design/icons';
 import { API_PREFIX } from '../../config';
 import { Section } from '../../model'
 
 
+// Helper: format seconds to mm:ss
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+
 interface LectureSectionsProps {
   videoId?: string;
-  handleItemClick : (time : number) => void,
-  height?: string | number; // Allow custom height
+  handleItemClick: (time: number) => void;
+  height?: string | number;
 }
 
 const LectureSections: React.FC<LectureSectionsProps> = ({
@@ -19,39 +28,39 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
 
   const [sections, setSections] = useState<Section[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch video sections
+  // Fetch video sections from the API
   useEffect(() => {
     const fetchSections = async () => {
-        try {
-            const response = await fetch(`${API_PREFIX}/api/videos/${videoId}/sections`);
-            // if (!response.ok) {
-            //     throw new Error(`HTTP error! status: ${response.status}`);
-            // }
-            // const data : Section[] = await response.json();
-            // TODO: Use mock data for now
-            const data : Section[] = [
-              { id: 1, begin_time: 0, text: "Introduction to the lecture and overview of topics." },
-              { id: 2, begin_time: 300, text: "Deep dive into the first topic with examples." },
-              { id: 3, begin_time: 900, text: "Discussion on advanced concepts and applications." },
-              { id: 4, begin_time: 1500, text: "Summary and conclusion of the lecture." }
-            ]
-
-            setSections(data);
-            setLoading(false);
-        } catch (error) {
-            console.error("Failed to fetch sections:", error);
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`${API_PREFIX}/api/videos/${videoId}/sections/`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
+        const data: Section[] = await response.json();
+        setSections(data);
+      } catch (err: any) {
+        console.error("Failed to fetch sections:", err);
+        setError(err.message || "Failed to load sections");
+        setSections([]);
+      } finally {
+        setLoading(false);
+      }
     };
-    
-    fetchSections();
+
+    if (videoId) {
+      fetchSections();
+    }
   }, [videoId]);
 
 
   return (
     <div>
       <Spin spinning={loading}>
-        <div 
+        <div
           className="transcript-list-container"
           style={{
             height: '100%',
@@ -59,38 +68,55 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
             overflowX: 'hidden'
           }}
         >
-          <List
-            dataSource={sections || []}
-            renderItem={(section) => (
-              <List.Item
-                key={section.id}
-                className="transcript-sentence-item"
-                onClick={() => handleItemClick(section.begin_time / 1000)}
-                style={{
-                  padding: '12px 16px',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s ease',
-                  borderBottom: '1px solid #f0f0f0'
-                }}
-                // Hover effect using inline styles (or you can use Tailwind classes)
-                onMouseEnter={(e) => {
-                  (e.target as HTMLElement).style.backgroundColor = '#f5f5f5';
-                }}
-                onMouseLeave={(e) => {
-                  (e.target as HTMLElement).style.backgroundColor = 'transparent';
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  {/* Timestamp */}
-                  {/* Sentence text */}
-                  <span className="text-gray-800 flex-1">
-                    {section.text}
-                  </span>
-                </div>
-              </List.Item>
-            )}
-            locale={{ emptyText: 'No transcript available' }}
-          />
+          {error ? (
+            <Empty
+              description={`No sections available yet. Process the video to generate sections.`}
+            />
+          ) : (
+            <List
+              dataSource={sections || []}
+              renderItem={(section) => (
+                <List.Item
+                  key={section.id}
+                  className="transcript-sentence-item"
+                  onClick={() => handleItemClick(section.begin_time)}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s ease',
+                    borderBottom: '1px solid #f0f0f0'
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = '#f5f5f5';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div className="flex flex-col gap-1 w-full">
+                    {/* Header: title + time range */}
+                    <div className="flex items-center gap-2">
+                      <Tag color="blue" className="m-0">
+                        <ClockCircleOutlined className="mr-1" />
+                        {formatTime(section.begin_time)} - {formatTime(section.end_time)}
+                      </Tag>
+                      <span className="font-medium text-gray-900">
+                        {section.title}
+                      </span>
+                    </div>
+                    {/* Transcript preview */}
+                    {section.transcript_text && (
+                      <span className="text-gray-500 text-sm line-clamp-2">
+                        {section.transcript_text.substring(0, 200)}
+                        {section.transcript_text.length > 200 ? '...' : ''}
+                      </span>
+                    )}
+                  </div>
+                </List.Item>
+              )}
+              locale={{ emptyText: 'No sections available' }}
+            />
+          )}
         </div>
       </Spin>
     </div>

@@ -1,47 +1,134 @@
-# myapp/tasks.py
+# api/tasks.py
 """
-Async task implementations with strict input/output contracts.
-All functions must:
-- Accept Dict[str, Any] input
-- Return Dict[str, Any] result
-- Raise exceptions on failure (runner handles status updates)
-- Include video_id in output for downstream tasks
+Async task implementations. All functions accept/return Dict[str, Any].
 """
 import logging
-from typing import Dict, Any, Callable
+import re
+from typing import Dict, Any, Callable, List
 from django.utils import timezone
-import sys
-import requests
 import json
 import os
-import time
 import uuid
 from django.core.files import File
 from django.conf import settings
 from api.utils import generate_thumbnails_for_video, get_local_file_path
-from api.models import  Video, Thumbnail, VideoTranscript, TranscriptSentence
-
+from api.models import (
+    Video, Thumbnail, VideoTranscript, TranscriptSentence,
+    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap,
+)
 from api.dashscope_asr import DashScopeASRClient
 from api.lecture_video_slides_chunker import detect_slide_changes_multithreaded
+from api.lecture_video_hybrid_chunker import hybrid_chunk
 from api.utils import generate_master_playlist, generate_hls_renditions
 
 logger = logging.getLogger('polyu-video')
 
 
+# ======================
+# PROMPT TEMPLATES
+# ======================
+
+FINE_GRAINED_EXTRACTION_PROMPT = """You are an expert educational content analyst. Analyze the following lecture segment and extract structured knowledge points.
+
+Section: {section_title}
+Time range: {time_range}
+
+Transcript:
+---
+{transcript}
+---
+
+Extract the following in JSON format:
+{{
+  "section_title": "A concise, descriptive title for this lecture segment (5-10 words)",
+  "points": [
+    {{
+      "title": "Knowledge point title (concise, 3-8 words)",
+      "summary": "2-3 sentence explanation of this concept as taught in this segment",
+      "terms": ["key technical term 1", "key technical term 2"],
+      "importance": 0.0-1.0
+    }}
+  ]
+}}
+
+Rules:
+- Extract 1-5 knowledge points per segment
+- Each point should be self-contained and understandable without the transcript
+- Key terms should be specific technical vocabulary
+- Importance: 0.0 = tangential, 1.0 = core topic
+- The section_title should describe what the segment covers
+- Return ONLY valid JSON, no markdown fences"""
+
+
+COARSE_SUMMARY_PROMPT = """You are an expert educational content analyst. Given the following lecture sections and their knowledge points, produce a comprehensive video-level summary.
+
+Video title: {video_title}
+
+Sections:
+{sections_text}
+
+Produce a JSON response:
+{{
+  "overview": "3-5 sentence high-level overview of the entire lecture",
+  "key_topics": ["Topic 1", "Topic 2", ...],
+  "learning_objectives": ["After watching, viewers will understand X", ...],
+  "prerequisites": ["Linear algebra basics", "Calculus fundamentals", ...],
+  "difficulty_level": "beginner|intermediate|advanced"
+}}
+
+Rules:
+- The overview should synthesize all sections, not just concatenate summaries
+- Key topics: 3-8 major themes
+- Learning objectives: 3-6 practical outcomes
+- Prerequisites: 1-4 assumed knowledge areas (can be empty for introductory content)
+- Difficulty based on content complexity
+- Return ONLY valid JSON"""
+
+
+MINDMAP_PROMPT = """You are an expert educational content analyst. Given the following lecture sections and knowledge points, produce a hierarchical mindmap structure.
+
+Video title: {video_title}
+
+Sections and knowledge points:
+{sections_text}
+
+Produce a JSON mindmap tree:
+{{
+  "id": "root",
+  "label": "{video_title}",
+  "children": [
+    {{
+      "id": "topic-1",
+      "label": "Main Topic Name",
+      "children": [
+        {{
+          "id": "sub-1-1",
+          "label": "Subtopic or Key Concept",
+          "children": []
+        }}
+      ]
+    }}
+  ]
+}}
+
+Rules:
+- The root node should be the video/lecture title
+- Group related knowledge points into 2-6 main topic branches
+- Each main topic can have 1-5 subtopics
+- Subtopics can optionally have 1-3 leaf nodes for specific details
+- Maximum depth: 4 levels (root -> topic -> subtopic -> detail)
+- Each node must have a unique "id" field (use descriptive slugs like "topic-ml-basics")
+- Labels should be concise (2-6 words)
+- Organize by conceptual relationships, NOT by chronological section order
+- Return ONLY valid JSON"""
+
+
+# ======================
+# HELPER FUNCTIONS
+# ======================
 
 def save_transcript(video_id: str, data: Dict[str, Any]) -> None:
-    """
-    Save the ASR result data into the Django database.
-
-    Args:
-        data (Dict[str, Any]): ASR result as a dictionary.
-
-    Raises:
-        ValueError: If required fields are missing.
-    """
-
-    # Create or update the VideoTranscript
-    video_transcript, created = VideoTranscript.objects.update_or_create(
+    video_transcript, _ = VideoTranscript.objects.update_or_create(
         video_id=video_id,
         defaults={
             "file_url": data.get("file_url", ""),
@@ -49,15 +136,11 @@ def save_transcript(video_id: str, data: Dict[str, Any]) -> None:
             "sample_rate": data.get("audio_info", {}).get("sample_rate", 0),
         }
     )
-
-    # Process each transcript entry
     for transcript in data.get("transcripts", []):
         channel_id = transcript.get("channel_id", 0)
-
-        # Delete existing sentences for this channel
-        TranscriptSentence.objects.filter(video_transcript=video_transcript, channel_id=channel_id).delete()
-
-        # Add new sentences
+        TranscriptSentence.objects.filter(
+            video_transcript=video_transcript, channel_id=channel_id
+        ).delete()
         for sentence in transcript.get("sentences", []):
             TranscriptSentence.objects.create(
                 video_transcript=video_transcript,
@@ -72,280 +155,571 @@ def save_transcript(video_id: str, data: Dict[str, Any]) -> None:
 
 
 def update_thumbnails_for_video(video_id: str, thumbnail_data: list[dict]):
-    """
-    Replace all thumbnails for a video with new ones from provided data.
-    
-    Args:
-        video_id (str): UUID string of the video
-        thumbnail_data (list[dict]): List like:
-            [
-                {
-                    'image_id': '309ef35e-...',
-                    'time_second': 446.4,
-                    'image': './media/thumbnails/309ef35e-....jpg'
-                },
-                ...
-            ]
-    """
-    # Validate and get video
-    try:
-        video_uuid = uuid.UUID(video_id)
-        video = Video.objects.get(id=video_uuid)
-    except (ValueError, Video.DoesNotExist) as e:
-        raise ValueError(f"Invalid or missing video ID: {video_id}") from e
-
-    # Delete existing thumbnails (cleanup old files too)
-    old_thumbnails = Thumbnail.objects.filter(video=video)
-    for thumb in old_thumbnails:
-        if thumb.image and os.path.isfile(thumb.image.path):
-            os.remove(thumb.image.path)  # Optional: delete old image file
-    old_thumbnails.delete()
-
-    # Create new thumbnails
-    created_count = 0
+    video = Video.objects.get(id=uuid.UUID(video_id))
+    old_thumbs = Thumbnail.objects.filter(video=video)
+    for t in old_thumbs:
+        if t.image and os.path.isfile(t.image.path):
+            os.remove(t.image.path)
+    old_thumbs.delete()
+    count = 0
     for item in thumbnail_data:
         try:
-            # Validate fields
-            img_id = uuid.UUID(item['image_id'])
-            time_sec = float(item['time_second'])
-            img_path = item['image']
-
-            if not os.path.isfile(img_path):
-                print(f"⚠️ Image not found: {img_path}")
-                continue
-
-            # Create new Thumbnail instance
             thumb = Thumbnail(
-                id=img_id,
-                video=video,
-                time_second=time_sec
+                id=uuid.UUID(item['image_id']), video=video,
+                time_second=float(item['time_second'])
             )
+            with open(item['image'], 'rb') as f:
+                thumb.image.save(os.path.basename(item['image']), File(f), save=True)
+            count += 1
+        except Exception as e:
+            logger.warning(f"Skipping thumbnail: {e}")
+    return count
 
-            # Open and assign file to ImageField
-            with open(img_path, 'rb') as f:
-                # Save under correct upload path (e.g., 'thumbnails/filename.jpg')
-                filename = os.path.basename(img_path)
-                thumb.image.save(filename, File(f), save=True)
 
-            created_count += 1
+def _get_transcript_as_asr_dict(video_id: str) -> Dict[str, Any]:
+    try:
+        vt = VideoTranscript.objects.get(video_id=video_id)
+    except VideoTranscript.DoesNotExist:
+        return {"transcripts": []}
+    sentences = TranscriptSentence.objects.filter(video_transcript=vt).order_by('begin_time')
+    return {
+        "file_url": vt.file_url,
+        "audio_info": {"format": vt.format, "sample_rate": vt.sample_rate},
+        "transcripts": [{"channel_id": 0, "sentences": [
+            {"sentence_id": s.sentence_id, "begin_time": s.begin_time,
+             "end_time": s.end_time, "language": s.language,
+             "emotion": s.emotion, "text": s.text} for s in sentences
+        ]}],
+    }
 
-        except (KeyError, ValueError, TypeError, OSError) as e:
-            print(f"❌ Skipping invalid thumbnail entry {item}: {e}")
-            continue
 
-    return created_count
-    
-    
+def _extract_transcript_for_range(sentences: list, begin_sec: float, end_sec: float) -> str:
+    begin_ms, end_ms = begin_sec * 1000, end_sec * 1000
+    return " ".join(
+        s.get("text", "").strip() for s in sentences
+        if s.get("end_time", 0) >= begin_ms and s.get("begin_time", 0) <= end_ms
+    )
+
+
+def _find_closest_thumbnail(video_id: str, time_sec: float):
+    thumbnails = Thumbnail.objects.filter(video_id=video_id).order_by('time_second')
+    closest, min_diff = None, float('inf')
+    for t in thumbnails:
+        d = abs(t.time_second - time_sec)
+        if d < min_diff:
+            min_diff, closest = d, t
+    return closest
+
+
+def _parse_llm_json(response_text: str) -> Dict[str, Any]:
+    cleaned = response_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r'^```\w*\n?', '', cleaned)
+        cleaned = re.sub(r'\n?```$', '', cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group())
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"Could not parse JSON from LLM: {response_text[:300]}")
+
+
+def _format_time(seconds: float) -> str:
+    return f"{int(seconds // 60):02d}:{int(seconds % 60):02d}"
+
+
+def _tree_to_react_flow(tree: Dict[str, Any], x: float = 0, y: float = 0,
+                         level: int = 0) -> tuple:
+    """
+    Convert a hierarchical tree into React Flow nodes + edges.
+    Uses a top-down layout with horizontal spacing per level.
+    """
+    nodes = []
+    edges = []
+
+    node_id = tree.get("id", "root")
+    label = tree.get("label", "")
+    children = tree.get("children", [])
+
+    # Style by level
+    styles = [
+        {"background": "#4F46E5", "color": "#fff", "fontSize": 16, "fontWeight": 700,
+         "padding": "12px 24px", "borderRadius": 12, "border": "2px solid #3730A3"},
+        {"background": "#7C3AED", "color": "#fff", "fontSize": 14, "fontWeight": 600,
+         "padding": "8px 16px", "borderRadius": 8, "border": "2px solid #6D28D9"},
+        {"background": "#2563EB", "color": "#fff", "fontSize": 13, "fontWeight": 500,
+         "padding": "6px 14px", "borderRadius": 8, "border": "1px solid #1D4ED8"},
+        {"background": "#F3F4F6", "color": "#374151", "fontSize": 12, "fontWeight": 400,
+         "padding": "4px 12px", "borderRadius": 6, "border": "1px solid #D1D5DB"},
+    ]
+    style = styles[min(level, len(styles) - 1)]
+
+    nodes.append({
+        "id": node_id,
+        "type": "default",
+        "data": {"label": label},
+        "position": {"x": x, "y": y},
+        "style": style,
+    })
+
+    if children:
+        y_spacing = 120
+        # Calculate total width needed for children
+        child_count = len(children)
+        x_spacing = max(200, 280 - level * 40)
+        total_width = (child_count - 1) * x_spacing
+        start_x = x - total_width / 2
+
+        for i, child in enumerate(children):
+            child_x = start_x + i * x_spacing
+            child_y = y + y_spacing
+
+            edges.append({
+                "id": f"e-{node_id}-{child.get('id', i)}",
+                "source": node_id,
+                "target": child.get("id", f"{node_id}-{i}"),
+                "type": "smoothstep",
+                "animated": level == 0,
+                "style": {"stroke": "#94A3B8", "strokeWidth": 2},
+            })
+
+            child_nodes, child_edges = _tree_to_react_flow(
+                child, x=child_x, y=child_y, level=level + 1
+            )
+            nodes.extend(child_nodes)
+            edges.extend(child_edges)
+
+    return nodes, edges
+
+
 # ======================
 # TASK IMPLEMENTATIONS
 # ======================
 
 def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    STUB: Extract audio, upload video to Tencent COS, transcribe with Qwen-ASR.
-    
-    Input: {"video_id": "uuid-str", "file" : "file relative path"}
-    Output: {
-        "video_id": "uuid-str",
-        "file" : "video/video.mp4",
-        "cos_audio_url": "https://...",
-    }
-    """
-    # 1. Fetch Video instance using input_data['video_id']
+    import subprocess
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
-    logger.info(f"[ASR Task] Processing video {video_id}")
-    
-    # 2. Use ffmpeg to extract audio
-    logger.info("processing audio done.")
-    from pydub import AudioSegment
-    # Requires FFmpeg installed system-wide
+    logger.info(f"[ASR] Processing video_id={video_id}, file={video_file}")
+
+    if not os.path.isfile(video_file):
+        raise FileNotFoundError(f"Video file not found: {video_file}")
+
+    # --- Extract audio using ffmpeg (robust, no pydub dependency) ---
     wav_file = os.path.join(settings.MEDIA_ROOT, "audio", f"{video_id}.wav")
-    logger.info(f"Begin process audio from {video_file} to {wav_file}")
-    audio = AudioSegment.from_file(video_file, format="mp4")
-    audio = audio.set_frame_rate(16000).set_channels(1)  # 16kHz mono
-    audio.export(wav_file, format="wav")
-    logger.info("End process audio.")
+    os.makedirs(os.path.dirname(wav_file), exist_ok=True)
 
-    # 3. Upload original video to Tencent COS
-    logger.info("Begin upload audio.")
+    # Check if video has an audio stream
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-select_streams", "a",
+        "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+        video_file,
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+    has_audio = bool(probe_result.stdout.strip())
+
+    if not has_audio:
+        raise RuntimeError(
+            f"Video file has no audio stream: {video_file}. "
+            "ASR requires an audio track. Please upload a video with audio."
+        )
+
+    # Extract audio to WAV (16kHz mono)
+    extract_cmd = [
+        "ffmpeg", "-y", "-i", video_file,
+        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        wav_file,
+    ]
+    logger.info(f"[ASR] Extracting audio: {' '.join(extract_cmd)}")
+    result = subprocess.run(extract_cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg audio extraction failed: {result.stderr[:500]}")
+
+    if not os.path.isfile(wav_file) or os.path.getsize(wav_file) == 0:
+        raise RuntimeError(f"Audio extraction produced empty file: {wav_file}")
+    logger.info(f"[ASR] Audio extracted: {wav_file} ({os.path.getsize(wav_file)} bytes)")
+
+    # --- Upload to Tencent COS ---
     from qcloud_cos import CosConfig, CosS3Client
-    # Configure (get from https://console.cloud.tencent.com/cam/capi)
-    config = CosConfig(Region=os.environ['COS_REGION'], SecretId=os.environ['COS_SECRECT_ID'], SecretKey=os.environ['COS_SECRECT_KEY'])
+    cos_region = os.environ.get('COS_REGION', '')
+    cos_id = os.environ.get('COS_SECRECT_ID', '')
+    cos_key_env = os.environ.get('COS_SECRECT_KEY', '')
+    cos_bucket = os.environ.get('COS_BUCKET', '')
+    if not all([cos_region, cos_id, cos_key_env, cos_bucket]):
+        raise RuntimeError(
+            "COS credentials not configured. Required env vars: "
+            "COS_REGION, COS_SECRECT_ID, COS_SECRECT_KEY, COS_BUCKET"
+        )
+
+    config = CosConfig(Region=cos_region, SecretId=cos_id, SecretKey=cos_key_env)
     client = CosS3Client(config)
-    bucket = os.environ['COS_BUCKET']
     cos_key = f'audio/{video_id}.wav'
-    response = client.upload_file(
-        Bucket=bucket,
-        LocalFilePath=wav_file,
-        Key=cos_key
-    )
-    # Get presigned URL for external use (e.g., DashScope)
-    signed_url = client.get_presigned_url(
-        Method='GET',
-        Bucket=bucket,
-        Key=cos_key,
-        Expired=3600  # seconds
-    )
-    logger.info(f"COS uploaded audio URL: {signed_url}")
-    logger.info("End upload audio.")
+    logger.info(f"[ASR] Uploading to COS: bucket={cos_bucket}, key={cos_key}")
+    client.upload_file(Bucket=cos_bucket, LocalFilePath=wav_file, Key=cos_key)
+    signed_url = client.get_presigned_url(Method='GET', Bucket=cos_bucket, Key=cos_key, Expired=3600)
+    logger.info(f"[ASR] COS upload complete, signed_url length={len(signed_url)}")
 
-    # 4. Call Qwen-ASR API with audio URL
-    logger.info("Begin process audio ASR.")
-    client = DashScopeASRClient(region="beijing")
-    transcript = client.transcribe_audio(
-        file_url=signed_url,
-        language="en",
-        timeout=600.0
+    # --- ASR transcription via DashScope ---
+    asr_client = DashScopeASRClient(region="beijing")
+    logger.info(f"[ASR] Submitting to DashScope ASR...")
+    transcript = asr_client.transcribe_audio(file_url=signed_url, language="en", timeout=600.0)
+
+    # Log ASR result structure for debugging
+    logger.info(
+        f"[ASR] Transcript received: "
+        f"transcripts={len(transcript.get('transcripts', []))}, "
+        f"keys={list(transcript.keys())}"
     )
+
     save_transcript(video_id, transcript)
-
-    logger.info("End process audio ASR.")
-    return {
-        "video_id": input_data["video_id"],
-        "file" : input_data['file'],
-        "cos_audio_url": signed_url,
-    }
+    logger.info(f"[ASR] Transcript saved for video {video_id}")
+    return {"video_id": video_id, "file": input_data['file'], "cos_audio_url": signed_url}
 
 
 def task_hls_streaming(input_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    STUB: Generate HLS with different resolution for online streaming
-    
-    Input: {"video_id": "uuid-str", "file" : "file relative path"}
-    
-    Output: {
-        "video_id": "uuid-str",
-        "file" : "video/video.mp4",
-        "changes": [10.22, 34.32, ...],
-    }
-    """
-    video_id = input_data.get('video_id')
+    video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
-    logger.info(f"[HLS Task] Generate HLS files, video_id: {video_id}")
-    # 1. Generate different resolutions
-    generate_hls_renditions(
-        input_video_path=video_file,
-        video_id=video_id,
-        output_root="./media/streams"
-    )
-    # 2. Generate master m3u8
-    master_m3u8_path = generate_master_playlist(
-        video_id=video_id,
-        output_root="./media/streams",
-        output_filename="master-stream.m3u8"
-    )
-
-    logger.info(f"[HLS Task] Complete generating HLS files, video_id: {video_id}")
-    return {
-        "video_id": input_data["video_id"],
-        "master_m3u8_path" : master_m3u8_path
-    }
+    generate_hls_renditions(input_video_path=video_file, video_id=video_id, output_root="./media/streams")
+    path = generate_master_playlist(video_id=video_id, output_root="./media/streams", output_filename="master-stream.m3u8")
+    return {"video_id": video_id, "master_m3u8_path": path}
 
 
 def task_ssim_move_detection(input_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    STUB: Use SSIM algorithm to detect video frame change
-    
-    Input: {"video_id": "uuid-str", "file" : "file relative path"}
-    
-    Output: {
-        "video_id": "uuid-str",
-        "file" : "video/video.mp4",
-        "changes": [10.22, 34.32, ...],
-    }
-    """
-    video_id = input_data.get('video_id')
+    video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
-    logger.info(f"[SSIM Task] Processing SSIM frame change detection, video_id: {video_id}")
-
     changes = detect_slide_changes_multithreaded(
-        video_path=video_file,
-        ssim_threshold=0.7,
-        min_interval_sec=5.0,
-        resize_width=240,
-        sampling_fps=10.0,
-        num_workers=16,
+        video_path=video_file, ssim_threshold=0.7, min_interval_sec=5.0,
+        resize_width=240, sampling_fps=10.0, num_workers=16,
     )
-    logger.info(f"[SSIM Task] Complete SSIM frame change detection, video_id: {video_id}")
-    return {
-        "video_id": input_data["video_id"],
-        "file" : input_data['file'],
-        "changes": changes,
-    }
+    return {"video_id": video_id, "file": input_data['file'], "changes": changes}
 
 
 def task_generate_thumbnails(input_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    STUB: Generate video thumbnails using video data.
-    
-    Input: {"video_id": "uuid-str", "file" : "file relative path", "changes": [10.22, 34.32, ...]}
-    
-    Output: {
-        "video_id": "uuid-str",
-        "file" : "video/video.mp4"
-        "thumbnail_count": 3
-    }
-    """
-    video_id = input_data.get('video_id')
+    video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
     frames = input_data.get('changes')
-    logger.info(f"[Thumbnails Task] Processing thumbnail generation, video id: {video_id}")
-
     thumbnails = generate_thumbnails_for_video(
-        video_file=video_file,
-        time_seconds=frames,
-        width=200,
-        output_dir="./media/thumbnails"
+        video_file=video_file, time_seconds=frames, width=200, output_dir="./media/thumbnails"
     )
-    for thumb in thumbnails:
-        logger.debug(f'Thumbnail: {thumb}')
     count = update_thumbnails_for_video(video_id, thumbnails)
+    return {"video_id": video_id, "file": input_data['file'],
+            "changes": input_data.get('changes', []), "thumbnail_count": count}
 
-    logger.info(f"[Thumbnails Task] Complete thumbnail generation, video id: {video_id}")
-    return {
-        "video_id": input_data["video_id"],
-        "file" : input_data['file'],
-        "thumbnail_count": count
-    }
-    
 
-def task_generate_summary(input_data: Dict[str, Any]) -> Dict[str, Any]:
+def task_hybrid_chunking(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    video_id = input_data['video_id']
+    slide_changes = input_data.get('changes', [])
+    video = Video.objects.get(id=video_id)
+    duration = video.duration
+    if duration <= 0:
+        if slide_changes:
+            duration = max(slide_changes) + 60.0
+        else:
+            last = TranscriptSentence.objects.filter(
+                video_transcript__video_id=video_id
+            ).order_by('-end_time').first()
+            duration = (last.end_time / 1000.0 + 10.0) if last else 3600.0
+
+    asr = _get_transcript_as_asr_dict(video_id)
+    all_sentences = []
+    for tr in asr.get("transcripts", []):
+        all_sentences.extend(tr.get("sentences", []))
+
+    chunks = hybrid_chunk(
+        slide_change_times=slide_changes, asr_transcript=asr,
+        video_duration_sec=duration, min_chunk_duration=30.0,
+        silence_gap_threshold=2.0, semantic_similarity_threshold=0.5,
+        use_semantic_check=True,
+    )
+
+    VideoSection.objects.filter(video_id=video_id).delete()
+    for i, (start, end) in enumerate(chunks):
+        VideoSection.objects.create(
+            video_id=video_id, title=f"Section {i + 1}",
+            begin_time=start, end_time=end,
+            transcript_text=_extract_transcript_for_range(all_sentences, start, end),
+            thumbnail=_find_closest_thumbnail(video_id, start), order=i,
+        )
+    return {"video_id": video_id, "section_count": len(chunks)}
+
+
+def task_fine_grained_knowledge(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    from api.llm_client import get_llm_client
+
+    video_id = input_data['video_id']
+    logger.info(f"[Fine-Grained Knowledge] Processing {video_id}")
+
+    sections = VideoSection.objects.filter(video_id=video_id).order_by('order')
+    if not sections.exists():
+        return {"video_id": video_id, "knowledge_points_count": 0, "sections_processed": 0}
+
+    llm = get_llm_client()
+    KnowledgePoint.objects.filter(video_id=video_id).delete()
+    total_kp, processed = 0, 0
+
+    for section in sections:
+        if not section.transcript_text or len(section.transcript_text.strip()) < 20:
+            continue
+        time_range = f"{_format_time(section.begin_time)} - {_format_time(section.end_time)}"
+        transcript = section.transcript_text[:3000]
+        if len(section.transcript_text) > 3000:
+            transcript += "... [truncated]"
+
+        prompt = FINE_GRAINED_EXTRACTION_PROMPT.format(
+            section_title=section.title, time_range=time_range, transcript=transcript,
+        )
+        try:
+            response = llm.chat(
+                prompt=prompt,
+                system_prompt="You are an expert educational content analyst. Respond with valid JSON only.",
+                temperature=0.3, max_tokens=2048,
+            )
+            data = _parse_llm_json(response)
+            new_title = data.get("section_title", "").strip()
+            if new_title:
+                section.title = new_title
+                section.save(update_fields=['title'])
+
+            for kp in data.get("points", []):
+                title = kp.get("title", "").strip()
+                summary = kp.get("summary", "").strip()
+                if not title or not summary:
+                    continue
+                KnowledgePoint.objects.create(
+                    section=section, video_id=video_id, title=title, summary=summary,
+                    key_terms=kp.get("terms", []),
+                    importance=min(max(float(kp.get("importance", 0.5)), 0.0), 1.0),
+                )
+                total_kp += 1
+            processed += 1
+        except Exception as e:
+            logger.error(f"[Fine-Grained] Section {section.order} failed: {e}")
+            continue
+
+    return {"video_id": video_id, "knowledge_points_count": total_kp, "sections_processed": processed}
+
+
+def task_embed_knowledge(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    from api.vector_store import get_vector_store
+
+    video_id = input_data['video_id']
+    store = get_vector_store()
+    store.delete_by_video(video_id)
+
+    kps = KnowledgePoint.objects.filter(video_id=video_id).select_related('section')
+    ids, texts, metas = [], [], []
+    for kp in kps:
+        embed_text = f"{kp.title}: {kp.summary}"
+        if kp.key_terms:
+            embed_text += f" (Key terms: {', '.join(kp.key_terms)})"
+        ids.append(str(kp.id))
+        texts.append(embed_text)
+        metas.append({
+            "video_id": video_id, "section_id": str(kp.section_id),
+            "type": "knowledge_point", "title": kp.title,
+            "begin_time": kp.section.begin_time, "end_time": kp.section.end_time,
+            "importance": kp.importance,
+        })
+    emb_kp = store.upsert_batch(ids, texts, metas) if ids else 0
+
+    sections = VideoSection.objects.filter(video_id=video_id).order_by('order')
+    s_ids, s_texts, s_metas = [], [], []
+    for s in sections:
+        if not s.transcript_text or len(s.transcript_text.strip()) < 10:
+            continue
+        s_ids.append(f"section-{s.id}")
+        s_texts.append(s.transcript_text[:2000])
+        s_metas.append({
+            "video_id": video_id, "section_id": str(s.id),
+            "type": "section_transcript", "title": s.title,
+            "begin_time": s.begin_time, "end_time": s.end_time,
+        })
+    emb_sec = store.upsert_batch(s_ids, s_texts, s_metas) if s_ids else 0
+
+    for kp in kps:
+        kp.embedding_id = str(kp.id)
+    KnowledgePoint.objects.bulk_update(list(kps), ['embedding_id'])
+
+    return {"video_id": video_id, "embedded_knowledge_points": emb_kp, "embedded_sections": emb_sec}
+
+
+def task_coarse_grained_summary(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    STUB: Generate AI summary using transcript and metadata.
-    
-    Input: Output from task_generate_thumbnails (MUST contain video_id)
-    Output: {
-        "video_id": "uuid-str",
-        "summary": "Concise summary text...",
-        "keywords": ["keyword1", "keyword2"]
-    }
+    Aggregate all sections + knowledge points into a video-level summary.
+    Saves a KnowledgeSummary record.
     """
-    logger.info(f"[Summary Task] Processing video {input_data.get('video_id')}")
-    # REAL IMPLEMENTATION WOULD:
-    # 1. Fetch transcript from DB or input chain
-    # 2. Call LLM API (Qwen, etc.) with transcript
-    # 3. Parse and return structured summary
-    
+    from api.llm_client import get_llm_client
+
+    video_id = input_data['video_id']
+    logger.info(f"[Coarse Summary] Processing {video_id}")
+
+    video = Video.objects.get(id=video_id)
+    sections = VideoSection.objects.filter(video_id=video_id).order_by('order')
+    kps = KnowledgePoint.objects.filter(video_id=video_id).select_related('section')
+
+    # Build sections text for the prompt
+    sections_lines = []
+    for s in sections:
+        time_range = f"{_format_time(s.begin_time)}-{_format_time(s.end_time)}"
+        section_kps = [kp for kp in kps if str(kp.section_id) == str(s.id)]
+        kp_text = ""
+        if section_kps:
+            kp_bullets = [f"  - {kp.title}: {kp.summary}" for kp in section_kps]
+            kp_text = "\n".join(kp_bullets)
+
+        sections_lines.append(
+            f"Section {s.order + 1}: {s.title} ({time_range})"
+            + (f"\n{kp_text}" if kp_text else "")
+        )
+
+    sections_text = "\n\n".join(sections_lines)
+    if len(sections_text) > 6000:
+        sections_text = sections_text[:6000] + "\n... [truncated]"
+
+    prompt = COARSE_SUMMARY_PROMPT.format(
+        video_title=video.title, sections_text=sections_text,
+    )
+
+    llm = get_llm_client()
+    try:
+        response = llm.chat(
+            prompt=prompt,
+            system_prompt="You are an expert educational content analyst. Respond with valid JSON only.",
+            temperature=0.3, max_tokens=2048,
+        )
+        data = _parse_llm_json(response)
+    except Exception as e:
+        logger.error(f"[Coarse Summary] LLM call failed: {e}")
+        data = {
+            "overview": f"Summary generation failed for video {video.title}.",
+            "key_topics": [], "learning_objectives": [],
+            "prerequisites": [], "difficulty_level": "unknown",
+        }
+
+    KnowledgeSummary.objects.update_or_create(
+        video_id=video_id,
+        defaults={
+            "overview": data.get("overview", ""),
+            "key_topics": data.get("key_topics", []),
+            "learning_objectives": data.get("learning_objectives", []),
+            "prerequisites": data.get("prerequisites", []),
+            "difficulty_level": data.get("difficulty_level", ""),
+        }
+    )
+
+    logger.info(f"[Coarse Summary] Complete for {video_id}")
+    return {"video_id": video_id, "summary_created": True}
+
+
+def task_generate_mindmap(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Generate a hierarchical mindmap from sections + knowledge points.
+    Saves tree_data + pre-computed React Flow nodes/edges.
+    """
+    from api.llm_client import get_llm_client
+
+    video_id = input_data['video_id']
+    logger.info(f"[Mindmap] Processing {video_id}")
+
+    video = Video.objects.get(id=video_id)
+    sections = VideoSection.objects.filter(video_id=video_id).order_by('order')
+    kps = KnowledgePoint.objects.filter(video_id=video_id).select_related('section')
+
+    # Build sections text
+    sections_lines = []
+    for s in sections:
+        time_range = f"{_format_time(s.begin_time)}-{_format_time(s.end_time)}"
+        section_kps = [kp for kp in kps if str(kp.section_id) == str(s.id)]
+        kp_text = ""
+        if section_kps:
+            kp_bullets = [f"  - {kp.title}" + (f" ({', '.join(kp.key_terms[:3])})" if kp.key_terms else "")
+                          for kp in section_kps]
+            kp_text = "\n".join(kp_bullets)
+        sections_lines.append(
+            f"Section {s.order + 1}: {s.title} ({time_range})"
+            + (f"\n{kp_text}" if kp_text else "")
+        )
+
+    sections_text = "\n\n".join(sections_lines)
+    if len(sections_text) > 5000:
+        sections_text = sections_text[:5000] + "\n... [truncated]"
+
+    prompt = MINDMAP_PROMPT.format(
+        video_title=video.title, sections_text=sections_text,
+    )
+
+    llm = get_llm_client()
+    try:
+        response = llm.chat(
+            prompt=prompt,
+            system_prompt="You are an expert educational content analyst. Respond with valid JSON only.",
+            temperature=0.4, max_tokens=3000,
+        )
+        tree_data = _parse_llm_json(response)
+    except Exception as e:
+        logger.error(f"[Mindmap] LLM call failed: {e}")
+        # Fallback: build a simple tree from sections
+        tree_data = {
+            "id": "root",
+            "label": video.title,
+            "children": [
+                {
+                    "id": f"section-{s.order}",
+                    "label": s.title or f"Section {s.order + 1}",
+                    "children": [
+                        {"id": str(kp.id)[:8], "label": kp.title, "children": []}
+                        for kp in kps if str(kp.section_id) == str(s.id)
+                    ]
+                }
+                for s in sections
+            ]
+        }
+
+    # Convert tree to React Flow nodes + edges
+    try:
+        rf_nodes, rf_edges = _tree_to_react_flow(tree_data, x=400, y=0)
+    except Exception as e:
+        logger.error(f"[Mindmap] React Flow conversion failed: {e}")
+        rf_nodes, rf_edges = [], []
+
+    KnowledgeMindmap.objects.update_or_create(
+        video_id=video_id,
+        defaults={
+            "tree_data": tree_data,
+            "react_flow_nodes": rf_nodes,
+            "react_flow_edges": rf_edges,
+        }
+    )
+
+    logger.info(f"[Mindmap] Complete: {len(rf_nodes)} nodes, {len(rf_edges)} edges for {video_id}")
     return {
-        "video_id": input_data["video_id"],
-        "summary": f"AI-generated summary for video {input_data['video_id']} created at {timezone.now().isoformat()}",
-        "keywords": ["video", "summary", "ai", "processing"]
+        "video_id": video_id,
+        "mindmap_nodes": len(rf_nodes),
+        "mindmap_edges": len(rf_edges),
     }
+
 
 # ======================
 # TASK REGISTRY
 # ======================
 TASK_REGISTRY: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     "task_extract_audio_and_transcript": task_extract_audio_and_transcript,
-    "task_hls_streaming" : task_hls_streaming,
-    "task_ssim_move_detection" : task_ssim_move_detection,
+    "task_hls_streaming": task_hls_streaming,
+    "task_ssim_move_detection": task_ssim_move_detection,
     "task_generate_thumbnails": task_generate_thumbnails,
-    "task_generate_summary": task_generate_summary,
+    "task_hybrid_chunking": task_hybrid_chunking,
+    "task_fine_grained_knowledge": task_fine_grained_knowledge,
+    "task_embed_knowledge": task_embed_knowledge,
+    "task_coarse_grained_summary": task_coarse_grained_summary,
+    "task_generate_mindmap": task_generate_mindmap,
 }
 
 def get_task_function(func_name: str) -> Callable:
-    """Safely retrieve task function from registry"""
     if func_name not in TASK_REGISTRY:
-        raise ValueError(f"Unknown task function: {func_name}. Registered: {list(TASK_REGISTRY.keys())}")
+        raise ValueError(f"Unknown task: {func_name}. Known: {list(TASK_REGISTRY.keys())}")
     return TASK_REGISTRY[func_name]
