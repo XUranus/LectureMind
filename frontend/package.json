@@ -11,6 +11,7 @@
     "@testing-library/user-event": "^13.5.0",
     "@types/jest": "^27.5.2",
     "@types/node": "^16.18.126",
+    "@xyflow/react": "^12.10.1",
     "antd": "^6.2.2",
     "dayjs": "^1.11.19",
     "rc-collapse": "^4.0.0",

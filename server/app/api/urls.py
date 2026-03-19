@@ -5,7 +5,6 @@ from django.conf.urls.static import static
 from . import views
 
 urlpatterns = [
-    # Health check
     path('health/', views.health_check, name='health-check'),
 
     # Videos
@@ -19,6 +18,8 @@ urlpatterns = [
     path('videos/<uuid:video_id>/sections/', views.VideoSectionListView.as_view(), name='section-list'),
     path('videos/<uuid:video_id>/knowledge/', views.KnowledgePointsByVideoView.as_view(), name='knowledge-list'),
     path('videos/<uuid:video_id>/knowledge/grouped/', views.SectionsWithKnowledgeView.as_view(), name='knowledge-grouped'),
+    path('videos/<uuid:video_id>/summary/', views.KnowledgeSummaryDetailView.as_view(), name='summary-detail'),
+    path('videos/<uuid:video_id>/mindmap/', views.KnowledgeMindmapDetailView.as_view(), name='mindmap-detail'),
     path('videos/process/', views.VideoTaskTriggerView.as_view(), name='video-task-process'),
 
     # Sections
@@ -37,6 +38,5 @@ urlpatterns = [
     path('tasks/<uuid:pk>/', views.AsyncTaskItemDetailView.as_view(), name='task-detail'),
 ]
 
-# Serve media files during development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

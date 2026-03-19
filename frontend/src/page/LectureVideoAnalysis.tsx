@@ -17,6 +17,8 @@ import LectureChatBot from '../components/lecture/LectureChatbot';
 import LectureTranscripts from '../components/lecture/LectureTranscripts';
 import LectureSections from '../components/lecture/LectureSections';
 import LectureKnowledge from '../components/lecture/LectureKnowledge';
+import LectureSummary from '../components/lecture/LectureSummary';
+import LectureMindmap from '../components/lecture/LectureMindmap';
 import StreamVideo from '../components/lecture/StreamVideo';
 
 import { ThumbnailItem } from '../model'
@@ -41,14 +43,11 @@ const ThumbnailScroller: React.FC<ThumbnailScrollerProps> = ({ thumbnails, handl
             className="relative flex-shrink-0 w-32 h-24 cursor-pointer group"
             onClick={() => handleThumbnailClick(item.timeSecond)}
           >
-            {/* Thumbnail Image */}
             <img
               src={item.imageUrl}
               alt={`Thumbnail at ${item.timeSecond}s`}
               className="w-full h-full object-cover rounded-lg border border-gray-200 shadow-sm"
             />
-
-            {/* Time Overlay on Hover */}
             <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <span className="text-white font-medium text-sm">
                 {item.timeSecond}s
@@ -63,7 +62,6 @@ const ThumbnailScroller: React.FC<ThumbnailScrollerProps> = ({ thumbnails, handl
 
 const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
 
-
   const [thumbnails, setThumbnails] = useState<ThumbnailItem[]>([]);
   const { videoId } = useParams();
   const [videoUrl, setVideoUrl] = useState<string>('');
@@ -71,13 +69,11 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
 
   const isProcessing = false;
 
-
   const jumpVideoTime = (time: number) => {
     console.log(`Jump to video time: ${time} seconds`);
     if (videoRef.current) {
       videoRef.current.currentTime = time;
       videoRef.current.play();
-      console.log(`Video current time set to ${videoRef.current.currentTime} seconds`);
     }
   };
 
@@ -111,6 +107,22 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
     },
     {
       key: '4',
+      label: 'Summary',
+      children: (<div className='p-4 h-full h-[700px] overflow-auto'>
+        <LectureSummary
+          videoId={videoId}/>
+        </div>),
+    },
+    {
+      key: '5',
+      label: 'Mindmap',
+      children: (<div className='h-full h-[700px]'>
+        <LectureMindmap
+          videoId={videoId}/>
+        </div>),
+    },
+    {
+      key: '6',
       label: 'Chat',
       children: (<div className='p-4 h-full h-[700px]'>
         <LectureChatBot videoId={videoId}/>
@@ -128,44 +140,37 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
             const data = await response.json();
             setVideoUrl(data['video_url']);
         } catch (error) {
-            console.error("Failed to fetch slides thumbs:", error);
+            console.error("Failed to fetch video source:", error);
         }
     };
-    
     fetchVideoSource();
   }, [videoId]);
 
   useEffect(() => {
     const fetchSlidesThumbnails = async () => {
-        // map the API response:
         const transformResponse = (apiData: any[]): ThumbnailItem[] =>
           apiData.map((item) => ({
             id: item.id,
             timeSecond: item.time_second,
             imageUrl: item.image_url,
           }));
-          
         try {
             const response = await fetch(`${API_PREFIX}/api/videos/${videoId}/thumbnails`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            const thumbnails = transformResponse(data);
-            setThumbnails(thumbnails);
+            setThumbnails(transformResponse(data));
         } catch (error) {
             console.error("Failed to fetch slides thumbs:", error);
         }
     };
-    
     fetchSlidesThumbnails();
   }, [videoId]);
 
 
-  // Video Analysis Page
   return (
     <div className="flex flex-col h-full">
-
       <div className="flex flex-col md:flex-row gap-6 h-full">
 
       {/* Left Video Section */}
@@ -202,9 +207,7 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
       </div>
 
       </div>
-
   </div>);
-
 }
 
 export default LectureVideoAnalysis;

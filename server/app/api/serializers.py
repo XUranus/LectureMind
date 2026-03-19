@@ -1,23 +1,16 @@
 # api/serializers.py
 from typing import Any, Dict, Optional
-
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
 
 from .models import (
-    Episode,
-    Video,
-    Thumbnail,
-    VideoTranscript,
-    TranscriptSentence,
-    VideoSection,
-    KnowledgePoint,
+    Episode, Video, Thumbnail, VideoTranscript, TranscriptSentence,
+    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap,
     AsyncTaskItem,
 )
 
 
 class ThumbnailSerializer(serializers.ModelSerializer):
-    """Serialize thumbnail metadata with absolute image URL."""
     id = serializers.UUIDField(read_only=True)
     image_url = serializers.SerializerMethodField()
 
@@ -35,7 +28,6 @@ class ThumbnailSerializer(serializers.ModelSerializer):
 
 
 class VideoSerializer(serializers.ModelSerializer):
-    """Serialize video metadata with absolute video file URL."""
     id = serializers.UUIDField(read_only=True)
     video_url = serializers.SerializerMethodField()
 
@@ -54,8 +46,6 @@ class VideoSerializer(serializers.ModelSerializer):
 
 
 class VideoUploadSerializer(serializers.ModelSerializer):
-    """Serializer for uploading a new video."""
-
     class Meta:
         model = Video
         fields = ['title', 'file', 'episode']
@@ -65,7 +55,6 @@ class VideoUploadSerializer(serializers.ModelSerializer):
 
 
 class TriggerTaskSerializer(serializers.Serializer):
-    """Validate a request to trigger async processing for a video."""
     id = serializers.UUIDField()
 
     def validate_id(self, value: str) -> str:
@@ -75,8 +64,6 @@ class TriggerTaskSerializer(serializers.Serializer):
 
 
 class TranscriptSentenceSerializer(serializers.ModelSerializer):
-    """Serialize individual transcript sentences."""
-
     class Meta:
         model = TranscriptSentence
         fields = [
@@ -86,7 +73,6 @@ class TranscriptSentenceSerializer(serializers.ModelSerializer):
 
 
 class VideoTranscriptSerializer(serializers.ModelSerializer):
-    """Serialize full video transcript including all sentences."""
     sentences = TranscriptSentenceSerializer(many=True, read_only=True)
 
     class Meta:
@@ -95,7 +81,6 @@ class VideoTranscriptSerializer(serializers.ModelSerializer):
 
 
 class VideoSectionSerializer(serializers.ModelSerializer):
-    """Serialize video sections with thumbnail URL."""
     id = serializers.UUIDField(read_only=True)
     thumbnail_url = serializers.SerializerMethodField()
 
@@ -117,7 +102,6 @@ class VideoSectionSerializer(serializers.ModelSerializer):
 
 
 class KnowledgePointSerializer(serializers.ModelSerializer):
-    """Serialize knowledge points with section context."""
     id = serializers.UUIDField(read_only=True)
     section_title = serializers.CharField(source='section.title', read_only=True)
     section_order = serializers.IntegerField(source='section.order', read_only=True)
@@ -135,7 +119,6 @@ class KnowledgePointSerializer(serializers.ModelSerializer):
 
 
 class SectionWithKnowledgeSerializer(serializers.ModelSerializer):
-    """Serialize a section with its nested knowledge points (for grouped display)."""
     id = serializers.UUIDField(read_only=True)
     thumbnail_url = serializers.SerializerMethodField()
     knowledge_points = KnowledgePointSerializer(many=True, read_only=True)
@@ -158,8 +141,29 @@ class SectionWithKnowledgeSerializer(serializers.ModelSerializer):
         return obj.thumbnail.image.url
 
 
+class KnowledgeSummarySerializer(serializers.ModelSerializer):
+    """Serialize the coarse-grained video summary."""
+    class Meta:
+        model = KnowledgeSummary
+        fields = [
+            'video', 'overview', 'key_topics', 'learning_objectives',
+            'prerequisites', 'difficulty_level', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['video', 'created_at', 'updated_at']
+
+
+class KnowledgeMindmapSerializer(serializers.ModelSerializer):
+    """Serialize the mindmap with pre-computed React Flow data."""
+    class Meta:
+        model = KnowledgeMindmap
+        fields = [
+            'video', 'tree_data', 'react_flow_nodes', 'react_flow_edges',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['video', 'created_at', 'updated_at']
+
+
 class EpisodeSerializer(serializers.ModelSerializer):
-    """Serialize episode with nested videos."""
     id = serializers.UUIDField(read_only=True)
     videos = VideoSerializer(many=True, read_only=True)
 
@@ -170,7 +174,6 @@ class EpisodeSerializer(serializers.ModelSerializer):
 
 
 class AsyncTaskItemSerializer(serializers.ModelSerializer):
-    """Serialize async task items with read-only metadata."""
     id = serializers.UUIDField(read_only=True)
 
     class Meta:
