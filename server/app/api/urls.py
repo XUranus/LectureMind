@@ -22,12 +22,15 @@ urlpatterns = [
     path('videos/<uuid:video_id>/mindmap/', views.KnowledgeMindmapDetailView.as_view(), name='mindmap-detail'),
     path('videos/process/', views.VideoTaskTriggerView.as_view(), name='video-task-process'),
 
-    # Chat
+    # Chat (RAG)
     path('videos/<uuid:video_id>/chat/sessions/', views.ChatSessionListCreateView.as_view(), name='chat-session-list'),
     path('videos/<uuid:video_id>/chat/stream/', views.chat_stream_view, name='chat-stream'),
     path('videos/<uuid:video_id>/chat/ask/', views.chat_ask_view, name='chat-ask'),
     path('chat/sessions/<uuid:pk>/', views.ChatSessionDetailView.as_view(), name='chat-session-detail'),
     path('chat/sessions/<uuid:session_id>/messages/', views.ChatMessageListView.as_view(), name='chat-message-list'),
+
+    # Agent Chat (LangGraph)
+    path('videos/<uuid:video_id>/agent/stream/', views.agent_chat_stream_view, name='agent-stream'),
 
     # Sections
     path('sections/<uuid:section_id>/knowledge/', views.KnowledgePointsBySectionView.as_view(), name='section-knowledge'),

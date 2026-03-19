@@ -120,7 +120,7 @@ export interface Citation {
   title: string;
   begin_time: number;
   end_time: number;
-  type: string;         // "knowledge_point" | "section_transcript"
+  type: string;
   relevance: number;
 }
 
@@ -129,6 +129,7 @@ export interface ChatMessageData {
   role: 'user' | 'assistant';
   content: string;
   citations: Citation[];
+  toolSteps?: AgentToolStep[];
   created_at?: string;
 }
 
@@ -139,4 +140,27 @@ export interface ChatSessionData {
   created_at: string;
   updated_at: string;
   message_count: number;
+}
+
+// Agent — LangGraph tool orchestration types
+
+export interface AgentToolStep {
+  tool: string;
+  args: Record<string, any>;
+  result?: string;
+}
+
+export type AgentEventType =
+  | 'thinking'
+  | 'tool_call'
+  | 'tool_result'
+  | 'token'
+  | 'citations'
+  | 'done'
+  | 'complete'
+  | 'error';
+
+export interface AgentEvent {
+  event: AgentEventType;
+  data: Record<string, any>;
 }

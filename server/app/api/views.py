@@ -455,3 +455,106 @@ class AsyncTaskItemsByVideoView(generics.ListAPIView):
     serializer_class = AsyncTaskItemSerializer
     def get_queryset(self):
         return AsyncTaskItem.objects.filter(video_id=self.kwargs['pk'])
+
+
+# ======================
+# AGENT CHAT VIEWS
+# ======================
+
+@csrf_exempt
+@api_view(['POST'])
+def agent_chat_stream_view(request, video_id):
+    """
+    POST /api/videos/<uuid>/agent/stream/
+
+    SSE streaming endpoint for LangGraph agent-powered chat with tool orchestration.
+
+    Request body:
+    {
+        "message": "Explain gradient descent in detail",
+        "session_id": "uuid" (optional)
+    }
+
+    Response: text/event-stream with SSE events:
+        event: thinking      — agent reasoning step
+        event: tool_call     — agent decided to call a tool
+        event: tool_result   — tool execution result (preview)
+        event: token         — final answer token
+        event: citations     — source citations
+        event: done          — completion with tool_steps + ids
+    """
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return Response({"error": "Invalid JSON body"}, status=400)
+
+    message = body.get("message", "").strip()
+    if not message:
+        return Response({"error": "Message is required"}, status=400)
+
+    video = get_object_or_404(Video, id=video_id)
+
+    session_id = body.get("session_id")
+    if session_id:
+        try:
+            session = ChatSession.objects.get(id=session_id, video=video)
+        except ChatSession.DoesNotExist:
+            return Response({"error": "Session not found"}, status=404)
+    else:
+        title = message[:80] + ("..." if len(message) > 80 else "")
+        session = ChatSession.objects.create(video=video, title=title)
+
+    ChatMessage.objects.create(session=session, role='user', content=message)
+
+    history = list(
+        ChatMessage.objects.filter(session=session)
+        .order_by('created_at').values('role', 'content')
+    )
+    chat_history = [{"role": m["role"], "content": m["content"]} for m in history[:-1]]
+
+    def sse_generator():
+        from api.agent_graph import run_agent_stream
+
+        full_response = []
+        citations = []
+        tool_steps = []
+
+        try:
+            for event in run_agent_stream(str(video_id), message, chat_history):
+                event_type = event.get("event", "")
+                data = event.get("data", {})
+
+                if event_type == "token":
+                    full_response.append(data.get("token", ""))
+
+                if event_type == "citations":
+                    citations = data.get("citations", [])
+
+                if event_type == "done":
+                    tool_steps = data.get("tool_steps", [])
+
+                yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+            # Save assistant message
+            assistant_msg = ChatMessage.objects.create(
+                session=session,
+                role='assistant',
+                content=''.join(full_response),
+                citations=citations,
+            )
+
+            yield f"event: complete\ndata: {json.dumps({'message_id': str(assistant_msg.id), 'session_id': str(session.id)})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Agent SSE error: {e}")
+            error_msg = ChatMessage.objects.create(
+                session=session, role='assistant',
+                content=f"Agent error: {str(e)}",
+                citations=[],
+            )
+            yield f"event: error\ndata: {json.dumps({'error': str(e), 'message_id': str(error_msg.id)})}\n\n"
+
+    response = StreamingHttpResponse(sse_generator(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
