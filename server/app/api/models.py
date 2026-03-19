@@ -239,6 +239,59 @@ class KnowledgeMindmap(models.Model):
         verbose_name_plural = "Knowledge Mindmaps"
 
 
+
+class ChatSession(models.Model):
+    """A chat conversation session between a user and the RAG chatbot for a video."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    video = models.ForeignKey(
+        Video, on_delete=models.CASCADE, related_name='chat_sessions',
+        help_text="Video this chat session is about."
+    )
+    title = models.CharField(
+        max_length=255, blank=True, default="New Chat",
+        help_text="Short session title (auto-generated or user-set)."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Chat {self.id} for {self.video.title}"
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [models.Index(fields=['video', '-updated_at'])]
+
+
+class ChatMessage(models.Model):
+    """A single message in a chat session (user or assistant)."""
+
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        ChatSession, on_delete=models.CASCADE, related_name='messages',
+        help_text="The chat session this message belongs to."
+    )
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES, help_text="Message sender role.")
+    content = models.TextField(help_text="Message text content (may contain markdown).")
+    citations = models.JSONField(
+        default=list, blank=True,
+        help_text='Source citations as JSON list.'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"[{self.role}] {self.content[:50]}"
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [models.Index(fields=['session', 'created_at'])]
+
+
 class AsyncTaskItem(models.Model):
     """Unit of async work in a processing pipeline with dependency chaining."""
 

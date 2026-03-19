@@ -40,7 +40,6 @@ export interface TranscriptData {
   sentences: Sentence[];
 }
 
-// Video section produced by hybrid chunker
 export interface Section {
   id: string;
   video: string;
@@ -52,7 +51,6 @@ export interface Section {
   order: number;
 }
 
-// Knowledge point extracted from a section by LLM
 export interface KnowledgePoint {
   id: string;
   section: string;
@@ -68,12 +66,10 @@ export interface KnowledgePoint {
   end_time: number;
 }
 
-// Section with nested knowledge points
 export interface SectionWithKnowledge extends Section {
   knowledge_points: KnowledgePoint[];
 }
 
-// Coarse-grained video summary
 export interface KnowledgeSummaryData {
   video: string;
   overview: string;
@@ -85,14 +81,12 @@ export interface KnowledgeSummaryData {
   updated_at: string;
 }
 
-// Mindmap node (tree structure from backend)
 export interface MindmapTreeNode {
   id: string;
   label: string;
   children: MindmapTreeNode[];
 }
 
-// React Flow node/edge from backend
 export interface ReactFlowNodeData {
   id: string;
   type: string;
@@ -110,7 +104,6 @@ export interface ReactFlowEdgeData {
   style?: Record<string, any>;
 }
 
-// Full mindmap response
 export interface KnowledgeMindmapData {
   video: string;
   tree_data: MindmapTreeNode;
@@ -118,4 +111,32 @@ export interface KnowledgeMindmapData {
   react_flow_edges: ReactFlowEdgeData[];
   created_at: string;
   updated_at: string;
+}
+
+// Chat — RAG chatbot types
+
+export interface Citation {
+  source_num: number;
+  title: string;
+  begin_time: number;
+  end_time: number;
+  type: string;         // "knowledge_point" | "section_transcript"
+  relevance: number;
+}
+
+export interface ChatMessageData {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  citations: Citation[];
+  created_at?: string;
+}
+
+export interface ChatSessionData {
+  id: string;
+  video: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
 }
