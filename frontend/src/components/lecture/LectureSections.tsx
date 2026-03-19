@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Spin, Tag, Empty } from 'antd';
 import { ClockCircleOutlined } from '@ant-design/icons';
 import { API_PREFIX } from '../../config';
@@ -9,6 +9,39 @@ const formatTime = (seconds: number): string => {
   const secs = Math.floor(seconds % 60);
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
+
+const SectionRow = React.memo<{
+  section: Section;
+  isActive: boolean;
+  onClick: (time: number) => void;
+}>(({ section, isActive, onClick }) => (
+  <div
+    onClick={() => onClick(section.begin_time)}
+    className={`px-4 py-3 cursor-pointer transition-all duration-150 border-b border-gray-100 ${
+      isActive
+        ? 'bg-blue-50 border-l-4 border-l-blue-500'
+        : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+    }`}
+  >
+    <div className="flex flex-col gap-1 w-full">
+      <div className="flex items-center gap-2">
+        <Tag color={isActive ? 'blue' : 'default'} className="m-0">
+          <ClockCircleOutlined className="mr-1" />
+          {formatTime(section.begin_time)} - {formatTime(section.end_time)}
+        </Tag>
+        <span className={`font-medium ${isActive ? 'text-blue-900' : 'text-gray-900'}`}>
+          {section.title}
+        </span>
+      </div>
+      {section.transcript_text && (
+        <span className="text-gray-500 text-sm line-clamp-2">
+          {section.transcript_text.substring(0, 200)}
+          {section.transcript_text.length > 200 ? '...' : ''}
+        </span>
+      )}
+    </div>
+  </div>
+));
 
 interface LectureSectionsProps {
   videoId?: string;
@@ -21,10 +54,9 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
   videoId,
   handleItemClick,
   currentTime = 0,
-  height = '200px',
 }) => {
   const [sections, setSections] = useState<Section[] | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const userScrolling = useRef(false);
@@ -33,15 +65,12 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
   useEffect(() => {
     const fetchSections = async () => {
       setLoading(true);
-      setError(null);
       try {
         const response = await fetch(`${API_PREFIX}/api/videos/${videoId}/sections/`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data: Section[] = await response.json();
-        setSections(data);
+        setSections(await response.json());
       } catch (err: any) {
-        console.error('Failed to fetch sections:', err);
-        setError(err.message || 'Failed to load sections');
+        setError(err.message);
         setSections([]);
       } finally {
         setLoading(false);
@@ -57,9 +86,10 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
   }, []);
 
   const sectionList = sections || [];
-  const activeIndex = sectionList.findIndex(
-    (s) => currentTime >= s.begin_time && currentTime < s.end_time
-  );
+  const activeIndex = useMemo(() => {
+    if (currentTime <= 0) return -1;
+    return sectionList.findIndex(s => currentTime >= s.begin_time && currentTime < s.end_time);
+  }, [currentTime, sectionList]);
 
   useEffect(() => {
     if (activeRef.current && !userScrolling.current && activeIndex >= 0) {
@@ -67,56 +97,23 @@ const LectureSections: React.FC<LectureSectionsProps> = ({
     }
   }, [activeIndex]);
 
+  if (loading) return <Spin className="flex justify-center py-8" />;
+  if (error || sectionList.length === 0) {
+    return <Empty description="No sections available yet. Process the video to generate sections." />;
+  }
+
   return (
-    <div>
-      <Spin spinning={loading}>
-        <div
-          style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}
-          onScroll={handleScroll}
-        >
-          {error ? (
-            <Empty description="No sections available yet. Process the video to generate sections." />
-          ) : sectionList.length === 0 && !loading ? (
-            <Empty description="No sections available" />
-          ) : (
-            sectionList.map((section, idx) => {
-              const isActive = idx === activeIndex;
-              return (
-                <div
-                  key={section.id}
-                  ref={isActive ? activeRef : undefined}
-                  onClick={() => handleItemClick(section.begin_time)}
-                  className={`px-4 py-3 cursor-pointer transition-all duration-200 border-b border-gray-100 ${
-                    isActive
-                      ? 'bg-blue-50 border-l-4 border-l-blue-500'
-                      : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex flex-col gap-1 w-full">
-                    <div className="flex items-center gap-2">
-                      <Tag color={isActive ? 'blue' : 'default'} className="m-0">
-                        <ClockCircleOutlined className="mr-1" />
-                        {formatTime(section.begin_time)} - {formatTime(section.end_time)}
-                      </Tag>
-                      <span className={`font-medium ${isActive ? 'text-blue-900' : 'text-gray-900'}`}>
-                        {section.title}
-                      </span>
-                    </div>
-                    {section.transcript_text && (
-                      <span className="text-gray-500 text-sm line-clamp-2 ml-0">
-                        {section.transcript_text.substring(0, 200)}
-                        {section.transcript_text.length > 200 ? '...' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </Spin>
+    <div style={{ height: '100%', overflowY: 'auto' }} onScroll={handleScroll}>
+      {sectionList.map((section, idx) => {
+        const isActive = idx === activeIndex;
+        return (
+          <div key={section.id} ref={isActive ? activeRef : undefined}>
+            <SectionRow section={section} isActive={isActive} onClick={handleItemClick} />
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-export default LectureSections;
+export default React.memo(LectureSections);

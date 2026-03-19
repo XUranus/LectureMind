@@ -83,7 +83,7 @@ class AgentRunner:
         from api.llm_client import get_llm_client
         from api.agent_tools import make_tools, execute_tool
 
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
         tools = make_tools(self.video_id)
         messages = self._build_initial_messages(question)
         tool_steps = []
@@ -152,7 +152,7 @@ class AgentRunner:
         from api.llm_client import get_llm_client
         from api.agent_tools import make_tools, execute_tool
 
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
         tools = make_tools(self.video_id)
         messages = self._build_initial_messages(question)
         tool_steps = []

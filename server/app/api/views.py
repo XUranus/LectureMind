@@ -696,7 +696,7 @@ You help students understand content across ALL lectures in this course.
 - Mention which lecture/section each piece of info is from when citing
 - Use markdown formatting"""
 
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
         tools = make_tools(self.video_ids[0])  # schema is same for any video
         messages = [{"role": "system", "content": COURSE_SYSTEM}]
         for msg in self.chat_history[-6:]:

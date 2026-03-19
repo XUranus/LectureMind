@@ -190,7 +190,7 @@ class RAGEngine:
         from api.llm_client import get_llm_client
 
         messages, citations = self._build_messages(question, chat_history)
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
         answer = llm.chat_messages(messages, temperature=0.5, max_tokens=2048)
         return answer, citations
 
@@ -210,7 +210,7 @@ class RAGEngine:
         from api.llm_client import get_llm_client
 
         messages, citations = self._build_messages(question, chat_history)
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
 
         try:
             for token in llm.stream_chat_messages(

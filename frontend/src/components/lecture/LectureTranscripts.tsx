@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Spin, List, Empty } from 'antd';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Spin, Empty } from 'antd';
 import { API_PREFIX } from '../../config';
 import { TranscriptData, Sentence } from '../../model';
 
@@ -10,10 +10,37 @@ const formatTime = (milliseconds: number): string => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
+// Memoized sentence row — only re-renders when isActive changes
+const SentenceRow = React.memo<{
+  sentence: Sentence;
+  isActive: boolean;
+  onClick: (time: number) => void;
+}>(({ sentence, isActive, onClick }) => (
+  <div
+    onClick={() => onClick(sentence.begin_time / 1000)}
+    className={`flex items-start gap-3 px-4 py-2 cursor-pointer transition-colors duration-150 border-b border-gray-50 ${
+      isActive
+        ? 'bg-blue-50 border-l-4 border-l-blue-500'
+        : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+    }`}
+  >
+    <span
+      className={`font-mono text-xs min-w-[45px] mt-0.5 ${
+        isActive ? 'text-blue-600 font-semibold' : 'text-gray-400'
+      }`}
+    >
+      {formatTime(sentence.begin_time)}
+    </span>
+    <span className={`flex-1 text-sm ${isActive ? 'text-blue-900 font-medium' : 'text-gray-700'}`}>
+      {sentence.text}
+    </span>
+  </div>
+));
+
 interface LectureTranscriptsProps {
   videoId?: string;
   handleItemClick: (time: number) => void;
-  currentTime?: number; // current video time in seconds
+  currentTime?: number;
   height?: string | number;
 }
 
@@ -21,11 +48,9 @@ const LectureTranscripts: React.FC<LectureTranscriptsProps> = ({
   videoId,
   handleItemClick,
   currentTime = 0,
-  height = '200px',
 }) => {
   const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
   const activeRef = useRef<HTMLDivElement>(null);
   const userScrolling = useRef(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -46,72 +71,46 @@ const LectureTranscripts: React.FC<LectureTranscriptsProps> = ({
     if (videoId) fetchTranscripts();
   }, [videoId]);
 
-  // Detect user scrolling — pause auto-scroll for 3 seconds
   const handleScroll = useCallback(() => {
     userScrolling.current = true;
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    scrollTimer.current = setTimeout(() => {
-      userScrolling.current = false;
-    }, 3000);
+    scrollTimer.current = setTimeout(() => { userScrolling.current = false; }, 3000);
   }, []);
 
-  // Find the currently active sentence
-  const currentTimeMs = currentTime * 1000;
   const sentences = transcriptData?.sentences || [];
-  const activeIndex = sentences.findIndex(
-    (s) => currentTimeMs >= s.begin_time && currentTimeMs < s.end_time
-  );
+  const currentTimeMs = currentTime * 1000;
 
-  // Auto-scroll to active sentence
+  // Binary-search-like find for active index (sentences sorted by begin_time)
+  const activeIndex = useMemo(() => {
+    if (currentTime <= 0 || sentences.length === 0) return -1;
+    for (let i = sentences.length - 1; i >= 0; i--) {
+      if (currentTimeMs >= sentences[i].begin_time) return i;
+    }
+    return -1;
+  }, [currentTimeMs, sentences]);
+
+  // Auto-scroll to active
   useEffect(() => {
     if (activeRef.current && !userScrolling.current && activeIndex >= 0) {
       activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [activeIndex]);
 
+  if (loading) return <Spin className="flex justify-center py-8" />;
+  if (sentences.length === 0) return <Empty description="No transcript available" />;
+
   return (
-    <div>
-      <Spin spinning={loading}>
-        <div
-          ref={containerRef}
-          className="transcript-list-container"
-          style={{ height: '100%', overflowY: 'auto' }}
-          onScroll={handleScroll}
-        >
-          {sentences.length === 0 && !loading ? (
-            <Empty description="No transcript available" />
-          ) : (
-            sentences.map((sentence, idx) => {
-              const isActive = idx === activeIndex;
-              return (
-                <div
-                  key={sentence.sentence_id}
-                  ref={isActive ? activeRef : undefined}
-                  onClick={() => handleItemClick(sentence.begin_time / 1000)}
-                  className={`flex items-start gap-3 px-4 py-2 cursor-pointer transition-colors duration-200 border-b border-gray-50 ${
-                    isActive
-                      ? 'bg-blue-50 border-l-4 border-l-blue-500'
-                      : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <span
-                    className={`font-mono text-xs min-w-[45px] mt-0.5 ${
-                      isActive ? 'text-blue-600 font-semibold' : 'text-gray-400'
-                    }`}
-                  >
-                    {formatTime(sentence.begin_time)}
-                  </span>
-                  <span className={`flex-1 text-sm ${isActive ? 'text-blue-900 font-medium' : 'text-gray-700'}`}>
-                    {sentence.text}
-                  </span>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </Spin>
+    <div style={{ height: '100%', overflowY: 'auto' }} onScroll={handleScroll}>
+      {sentences.map((sentence, idx) => {
+        const isActive = idx === activeIndex;
+        return (
+          <div key={sentence.sentence_id} ref={isActive ? activeRef : undefined}>
+            <SentenceRow sentence={sentence} isActive={isActive} onClick={handleItemClick} />
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-export default LectureTranscripts;
+export default React.memo(LectureTranscripts);

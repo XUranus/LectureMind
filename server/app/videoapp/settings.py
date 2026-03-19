@@ -11,9 +11,32 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# ── Load .env file ──────────────────────────────────────────────
+# Works for both `manage.py runserver` and `manage.py process_async_task`
+def _load_dotenv(base: Path):
+    for candidate in [base / '.env', base.parent / '.env', base.parent.parent / '.env']:
+        if candidate.is_file():
+            with open(candidate) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if not _line or _line.startswith('#') or '=' not in _line:
+                        continue
+                    _k, _v = _line.split('=', 1)
+                    _k = _k.strip()
+                    _v = _v.strip().strip("'").strip('"')
+                    if ' #' in _v:
+                        _v = _v.split(' #')[0].strip().strip("'").strip('"')
+                    if _k not in os.environ:
+                        os.environ[_k] = _v
+            break
+
+_load_dotenv(BASE_DIR)
 
 
 # Quick-start development settings - unsuitable for production
