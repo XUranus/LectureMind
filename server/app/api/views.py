@@ -16,6 +16,7 @@ from .models import (
     Thumbnail,
     VideoTranscript,
     VideoSection,
+    KnowledgePoint,
     Episode,
     AsyncTaskItem,
 )
@@ -25,6 +26,8 @@ from .serializers import (
     VideoUploadSerializer,
     VideoTranscriptSerializer,
     VideoSectionSerializer,
+    KnowledgePointSerializer,
+    SectionWithKnowledgeSerializer,
     EpisodeSerializer,
     AsyncTaskItemSerializer,
     TriggerTaskSerializer,
@@ -120,9 +123,7 @@ class VideoUploadView(generics.CreateAPIView):
 class VideoTaskTriggerView(generics.GenericAPIView):
     """
     POST /api/videos/process/
-
     Triggers an asynchronous processing pipeline for an existing video.
-    Ensures no duplicate active task chains are created.
     """
     serializer_class = TriggerTaskSerializer
 
@@ -136,7 +137,6 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         video = get_object_or_404(Video, id=video_id)
         logger.info("Processing task triggered for video ID: %s", video.id)
 
-        # Avoid creating duplicate active task chains
         if video.async_tasks.filter(status__in=['pending', 'running']).exists():
             logger.info("Task chain already active for video ID: %s", video.id)
             return Response(
@@ -160,24 +160,25 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         """
         Creates a directed acyclic graph of async tasks for video processing.
 
-        Task dependencies:
-          - Task 1 (ASR), Task 2 (HLS), Task 3 (SSIM) run in parallel.
-          - Task 4 (Thumbnails) depends on Task 3.
-          - Task 5 (Hybrid Chunking) depends on Task 4 (and reads ASR from DB).
-          - Task 6 (Summary) depends on Task 5.
+        Task DAG:
+          Task 1 (ASR), Task 2 (HLS), Task 3 (SSIM) — parallel, no deps
+          Task 4 (Thumbnails) — depends on Task 3
+          Task 5 (Hybrid Chunking) — depends on Task 4 (reads ASR from DB)
+          Task 6 (Fine-Grained Knowledge) — depends on Task 5
+          Task 7 (Embed Knowledge) — depends on Task 6
+          Task 8 (Summary) — depends on Task 7
         """
-        # Task 1: ASR + COS upload (parallel, no deps)
+        # Task 1: ASR (parallel)
         task1 = AsyncTaskItem.objects.create(
             video=video,
             title="Extract audio & generate transcript",
-            description="Extract audio track, upload video to COS, transcribe with Qwen-ASR",
+            description="Extract audio track, upload to COS, transcribe with Qwen-ASR",
             func_name="task_extract_audio_and_transcript",
             param=json.dumps({"video_id": str(video.id), "file": video.file.name}),
             previous=None
         )
-        logger.debug("Created Task1 (ASR): %s for video %s", task1.id, video.id)
 
-        # Task 2: HLS streaming (parallel, no deps)
+        # Task 2: HLS (parallel)
         task2 = AsyncTaskItem.objects.create(
             video=video,
             title="Generate HLS",
@@ -186,9 +187,8 @@ class VideoTaskTriggerView(generics.GenericAPIView):
             param=json.dumps({"video_id": str(video.id), "file": video.file.name}),
             previous=None
         )
-        logger.debug("Created Task2 (HLS): %s for video %s", task2.id, video.id)
 
-        # Task 3: SSIM-based motion detection (parallel, no deps)
+        # Task 3: SSIM (parallel)
         task3 = AsyncTaskItem.objects.create(
             video=video,
             title="SSIM Motion Detection",
@@ -197,7 +197,6 @@ class VideoTaskTriggerView(generics.GenericAPIView):
             param=json.dumps({"video_id": str(video.id), "file": video.file.name}),
             previous=None
         )
-        logger.debug("Created Task3 (SSIM): %s for video %s", task3.id, video.id)
 
         # Task 4: Thumbnails (depends on SSIM)
         task4 = AsyncTaskItem.objects.create(
@@ -208,29 +207,54 @@ class VideoTaskTriggerView(generics.GenericAPIView):
             param=json.dumps({"video_id": str(video.id)}),
             previous=task3.id
         )
-        logger.debug("Created Task4 (Thumbnails): %s | Depends on: %s", task4.id, task3.id)
 
-        # Task 5: Hybrid Chunking (depends on Thumbnails; reads ASR transcript from DB)
+        # Task 5: Hybrid Chunking (depends on Thumbnails)
         task5 = AsyncTaskItem.objects.create(
             video=video,
             title="Hybrid video chunking",
-            description="Combine SSIM slide changes + ASR transcript for intelligent lecture segmentation",
+            description="Combine SSIM slide changes + ASR transcript for intelligent segmentation",
             func_name="task_hybrid_chunking",
             param=json.dumps({"video_id": str(video.id)}),
             previous=task4.id
         )
-        logger.debug("Created Task5 (Hybrid Chunking): %s | Depends on: %s", task5.id, task4.id)
 
-        # Task 6: AI Summary (depends on Hybrid Chunking)
+        # Task 6: Fine-Grained Knowledge Extraction (depends on Hybrid Chunking)
         task6 = AsyncTaskItem.objects.create(
+            video=video,
+            title="Extract knowledge points",
+            description="Use LLM to extract structured knowledge points from each section",
+            func_name="task_fine_grained_knowledge",
+            param=json.dumps({"video_id": str(video.id)}),
+            previous=task5.id
+        )
+
+        # Task 7: Embed Knowledge into Vector Store (depends on Knowledge Extraction)
+        task7 = AsyncTaskItem.objects.create(
+            video=video,
+            title="Embed knowledge vectors",
+            description="Generate embeddings for knowledge points and store in vector DB",
+            func_name="task_embed_knowledge",
+            param=json.dumps({"video_id": str(video.id)}),
+            previous=task6.id
+        )
+
+        # Task 8: Summary (depends on Embedding)
+        task8 = AsyncTaskItem.objects.create(
             video=video,
             title="Generate content summary",
             description="Create AI-generated summary using transcript and metadata",
             func_name="task_generate_summary",
             param=json.dumps({"video_id": str(video.id)}),
-            previous=task5.id
+            previous=task7.id
         )
-        logger.debug("Created Task6 (Summary): %s | Depends on: %s", task6.id, task5.id)
+
+        logger.debug(
+            "Created task chain: ASR(%s), HLS(%s), SSIM(%s) -> "
+            "Thumbnails(%s) -> Chunking(%s) -> Knowledge(%s) -> "
+            "Embed(%s) -> Summary(%s)",
+            task1.id, task2.id, task3.id, task4.id,
+            task5.id, task6.id, task7.id, task8.id
+        )
 
 
 # ======================
@@ -238,9 +262,7 @@ class VideoTaskTriggerView(generics.GenericAPIView):
 # ======================
 
 class TranscriptDetailView(generics.GenericAPIView):
-    """
-    Retrieve the transcript for a specific video by video_id.
-    """
+    """Retrieve the transcript for a specific video by video_id."""
 
     def get(self, request, video_id: str, format=None) -> Response:
         try:
@@ -267,6 +289,52 @@ class VideoSectionListView(generics.ListAPIView):
     def get_queryset(self):
         video_id = self.kwargs['video_id']
         return VideoSection.objects.filter(video_id=video_id).order_by('order', 'begin_time')
+
+
+# ======================
+# KNOWLEDGE VIEWS
+# ======================
+
+class KnowledgePointsByVideoView(generics.ListAPIView):
+    """
+    GET /api/videos/<uuid>/knowledge/
+    List all knowledge points for a video (flat list).
+    """
+    serializer_class = KnowledgePointSerializer
+
+    def get_queryset(self):
+        video_id = self.kwargs['video_id']
+        return KnowledgePoint.objects.filter(
+            video_id=video_id
+        ).select_related('section').order_by('section__order', 'created_at')
+
+
+class KnowledgePointsBySectionView(generics.ListAPIView):
+    """
+    GET /api/sections/<uuid>/knowledge/
+    List all knowledge points for a specific section.
+    """
+    serializer_class = KnowledgePointSerializer
+
+    def get_queryset(self):
+        section_id = self.kwargs['section_id']
+        return KnowledgePoint.objects.filter(
+            section_id=section_id
+        ).select_related('section').order_by('created_at')
+
+
+class SectionsWithKnowledgeView(generics.ListAPIView):
+    """
+    GET /api/videos/<uuid>/knowledge/grouped/
+    List all sections with their nested knowledge points (grouped view).
+    """
+    serializer_class = SectionWithKnowledgeSerializer
+
+    def get_queryset(self):
+        video_id = self.kwargs['video_id']
+        return VideoSection.objects.filter(
+            video_id=video_id
+        ).prefetch_related('knowledge_points').order_by('order', 'begin_time')
 
 
 # ======================

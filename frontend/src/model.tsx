@@ -1,4 +1,5 @@
 // Define TypeScript interfaces
+
 export interface Video {
   id: string;
   cover: string;
@@ -49,4 +50,26 @@ export interface Section {
   transcript_text: string;
   thumbnail_url: string | null;
   order: number;
+}
+
+// Knowledge point extracted from a section by LLM
+export interface KnowledgePoint {
+  id: string;
+  section: string;       // section UUID
+  video: string;         // video UUID
+  title: string;
+  summary: string;
+  key_terms: string[];
+  importance: number;    // 0.0 - 1.0
+  created_at: string;
+  // Denormalized section context
+  section_title: string;
+  section_order: number;
+  begin_time: number;    // section begin time in seconds
+  end_time: number;      // section end time in seconds
+}
+
+// Section with nested knowledge points (grouped API response)
+export interface SectionWithKnowledge extends Section {
+  knowledge_points: KnowledgePoint[];
 }

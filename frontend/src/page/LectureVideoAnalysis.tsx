@@ -16,6 +16,7 @@ import './LectureVideoAnalysis.css';
 import LectureChatBot from '../components/lecture/LectureChatbot';
 import LectureTranscripts from '../components/lecture/LectureTranscripts';
 import LectureSections from '../components/lecture/LectureSections';
+import LectureKnowledge from '../components/lecture/LectureKnowledge';
 import StreamVideo from '../components/lecture/StreamVideo';
 
 import { ThumbnailItem } from '../model'
@@ -101,6 +102,15 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
     },
     {
       key: '3',
+      label: 'Knowledge',
+      children: (<div className='p-4 h-full h-[700px] overflow-auto'>
+        <LectureKnowledge
+          handleItemClick={jumpVideoTime}
+          videoId={videoId}/>
+        </div>),
+    },
+    {
+      key: '4',
       label: 'Chat',
       children: (<div className='p-4 h-full h-[700px]'>
         <LectureChatBot videoId={videoId}/>
@@ -188,20 +198,11 @@ const LectureVideoAnalysis: React.FC<LectureVideoAnalysisProps> = () => {
           items={rightTabItems}
           className="w-full h-full"
           defaultActiveKey='1'
-          // Optional: customize active tab style via className or style
         />
       </div>
 
       </div>
 
-
-      {/* Bottom Thumbnails Scroller */}
-      {/* <div className="p-6 max-w-6xl mx-auto">
-        <ThumbnailScroller
-          handleThumbnailClick={jumpVideoTime}
-          thumbnails={thumbnails} />
-      </div> */}
-  
   </div>);
 
 }

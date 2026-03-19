@@ -78,14 +78,13 @@ class Thumbnail(models.Model):
 class VideoTranscript(models.Model):
     """
     Stores automatic speech recognition (ASR) metadata and results for a video.
-
     Each transcript is associated with exactly one video.
     """
 
     video = models.OneToOneField(
         Video,
         on_delete=models.CASCADE,
-        primary_key=True,  # Enforces 1:1 and uses Video's UUID as PK
+        primary_key=True,
         help_text="The video this transcript belongs to."
     )
     file_url = models.URLField(help_text="URL to the processed audio file.")
@@ -101,9 +100,7 @@ class VideoTranscript(models.Model):
 
 
 class TranscriptSentence(models.Model):
-    """
-    Represents a single transcribed sentence from a video's ASR output.
-    """
+    """Represents a single transcribed sentence from a video's ASR output."""
 
     video_transcript = models.ForeignKey(
         VideoTranscript,
@@ -131,9 +128,7 @@ class TranscriptSentence(models.Model):
 class VideoSection(models.Model):
     """
     Represents an intelligent segment/chapter of a video produced by the hybrid chunker.
-
-    Combines SSIM slide detection, ASR silence gaps, and semantic similarity to produce
-    meaningful lecture sections with time boundaries and extracted transcript text.
+    Combines SSIM slide detection, ASR silence gaps, and semantic similarity.
     """
 
     id = models.UUIDField(
@@ -181,10 +176,68 @@ class VideoSection(models.Model):
         ]
 
 
+class KnowledgePoint(models.Model):
+    """
+    Fine-grained knowledge extracted from a single video section.
+
+    Each knowledge point is produced by sending the section's transcript
+    (and optionally slide image) to a multimodal LLM for structured extraction.
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+    section = models.ForeignKey(
+        VideoSection,
+        on_delete=models.CASCADE,
+        related_name='knowledge_points',
+        help_text="The section this knowledge point was extracted from."
+    )
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name='knowledge_points',
+        help_text="The video this knowledge point belongs to (denormalized for query efficiency)."
+    )
+    title = models.CharField(
+        max_length=512,
+        help_text="Concise title of the knowledge point."
+    )
+    summary = models.TextField(
+        help_text="Detailed explanation of the knowledge point (2-3 sentences)."
+    )
+    key_terms = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of key technical terms, e.g. ["gradient descent", "learning rate"].'
+    )
+    importance = models.FloatField(
+        default=0.5,
+        help_text="Importance score from 0.0 (low) to 1.0 (high)."
+    )
+    embedding_id = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Reference to vector DB entry for semantic retrieval."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"KP: {self.title} (Section {self.section.order})"
+
+    class Meta:
+        ordering = ['section__order', 'created_at']
+        indexes = [
+            models.Index(fields=['video', 'section']),
+            models.Index(fields=['video', 'created_at']),
+        ]
+
+
 class AsyncTaskItem(models.Model):
     """
     Represents a unit of asynchronous work in a processing pipeline.
-
     Tasks may depend on the completion of a previous task via the `previous` UUID reference.
     """
 

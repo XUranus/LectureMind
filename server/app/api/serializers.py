@@ -11,6 +11,7 @@ from .models import (
     VideoTranscript,
     TranscriptSentence,
     VideoSection,
+    KnowledgePoint,
     AsyncTaskItem,
 )
 
@@ -53,10 +54,7 @@ class VideoSerializer(serializers.ModelSerializer):
 
 
 class VideoUploadSerializer(serializers.ModelSerializer):
-    """
-    Serializer for uploading a new video.
-    Accepts only title, file, and episode during creation.
-    """
+    """Serializer for uploading a new video."""
 
     class Meta:
         model = Video
@@ -82,13 +80,8 @@ class TranscriptSentenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = TranscriptSentence
         fields = [
-            'channel_id',
-            'sentence_id',
-            'begin_time',
-            'end_time',
-            'language',
-            'emotion',
-            'text'
+            'channel_id', 'sentence_id', 'begin_time', 'end_time',
+            'language', 'emotion', 'text'
         ]
 
 
@@ -98,13 +91,7 @@ class VideoTranscriptSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VideoTranscript
-        fields = [
-            'video_id',
-            'file_url',
-            'format',
-            'sample_rate',
-            'sentences'
-        ]
+        fields = ['video_id', 'file_url', 'format', 'sample_rate', 'sentences']
 
 
 class VideoSectionSerializer(serializers.ModelSerializer):
@@ -115,14 +102,50 @@ class VideoSectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoSection
         fields = [
-            'id',
-            'video',
-            'title',
-            'begin_time',
-            'end_time',
-            'transcript_text',
-            'thumbnail_url',
-            'order',
+            'id', 'video', 'title', 'begin_time', 'end_time',
+            'transcript_text', 'thumbnail_url', 'order',
+        ]
+        read_only_fields = ['id']
+
+    def get_thumbnail_url(self, obj: VideoSection) -> Optional[str]:
+        if not obj.thumbnail or not obj.thumbnail.image:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.thumbnail.image.url)
+        return obj.thumbnail.image.url
+
+
+class KnowledgePointSerializer(serializers.ModelSerializer):
+    """Serialize knowledge points with section context."""
+    id = serializers.UUIDField(read_only=True)
+    section_title = serializers.CharField(source='section.title', read_only=True)
+    section_order = serializers.IntegerField(source='section.order', read_only=True)
+    begin_time = serializers.FloatField(source='section.begin_time', read_only=True)
+    end_time = serializers.FloatField(source='section.end_time', read_only=True)
+
+    class Meta:
+        model = KnowledgePoint
+        fields = [
+            'id', 'section', 'video', 'title', 'summary',
+            'key_terms', 'importance', 'created_at',
+            'section_title', 'section_order', 'begin_time', 'end_time',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class SectionWithKnowledgeSerializer(serializers.ModelSerializer):
+    """Serialize a section with its nested knowledge points (for grouped display)."""
+    id = serializers.UUIDField(read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    knowledge_points = KnowledgePointSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = VideoSection
+        fields = [
+            'id', 'video', 'title', 'begin_time', 'end_time',
+            'transcript_text', 'thumbnail_url', 'order',
+            'knowledge_points',
         ]
         read_only_fields = ['id']
 
@@ -153,12 +176,7 @@ class AsyncTaskItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = AsyncTaskItem
         fields = [
-            'id',
-            'video',
-            'title',
-            'description',
-            'created_at',
-            'finished_at',
-            'status'
+            'id', 'video', 'title', 'description',
+            'created_at', 'finished_at', 'status'
         ]
         read_only_fields = ['id', 'created_at', 'finished_at']

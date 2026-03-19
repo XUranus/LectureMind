@@ -17,7 +17,12 @@ urlpatterns = [
     path('videos/<uuid:video_id>/thumbnails/', views.ThumbnailListView.as_view(), name='thumbnail-list'),
     path('videos/<uuid:video_id>/transcript/', views.TranscriptDetailView.as_view(), name='transcript-detail'),
     path('videos/<uuid:video_id>/sections/', views.VideoSectionListView.as_view(), name='section-list'),
+    path('videos/<uuid:video_id>/knowledge/', views.KnowledgePointsByVideoView.as_view(), name='knowledge-list'),
+    path('videos/<uuid:video_id>/knowledge/grouped/', views.SectionsWithKnowledgeView.as_view(), name='knowledge-grouped'),
     path('videos/process/', views.VideoTaskTriggerView.as_view(), name='video-task-process'),
+
+    # Sections
+    path('sections/<uuid:section_id>/knowledge/', views.KnowledgePointsBySectionView.as_view(), name='section-knowledge'),
 
     # Episodes
     path('episodes/', views.EpisodeListView.as_view(), name='episode-list'),
@@ -31,7 +36,6 @@ urlpatterns = [
     path('tasks/new/', views.AsyncTaskItemCreateView.as_view(), name='new-task-list'),
     path('tasks/<uuid:pk>/', views.AsyncTaskItemDetailView.as_view(), name='task-detail'),
 ]
-
 
 # Serve media files during development
 if settings.DEBUG:
