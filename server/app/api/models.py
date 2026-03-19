@@ -128,6 +128,59 @@ class TranscriptSentence(models.Model):
         ]
 
 
+class VideoSection(models.Model):
+    """
+    Represents an intelligent segment/chapter of a video produced by the hybrid chunker.
+
+    Combines SSIM slide detection, ASR silence gaps, and semantic similarity to produce
+    meaningful lecture sections with time boundaries and extracted transcript text.
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name='sections',
+        help_text="Video this section belongs to."
+    )
+    title = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text="AI-generated or human-assigned section title."
+    )
+    begin_time = models.FloatField(help_text="Start time in seconds.")
+    end_time = models.FloatField(help_text="End time in seconds.")
+    transcript_text = models.TextField(
+        blank=True,
+        help_text="Concatenated transcript text for this section."
+    )
+    thumbnail = models.ForeignKey(
+        Thumbnail,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="Representative slide thumbnail for this section."
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text="Section ordering index."
+    )
+
+    def __str__(self) -> str:
+        return f"{self.video.title} | Section {self.order}: {self.title or 'Untitled'}"
+
+    class Meta:
+        ordering = ['order', 'begin_time']
+        indexes = [
+            models.Index(fields=['video', 'begin_time']),
+            models.Index(fields=['video', 'order']),
+        ]
+
+
 class AsyncTaskItem(models.Model):
     """
     Represents a unit of asynchronous work in a processing pipeline.
@@ -151,7 +204,7 @@ class AsyncTaskItem(models.Model):
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    func_name = models.CharField(max_length=64, help_text="Name of the Celery/task function to execute.")
+    func_name = models.CharField(max_length=64, help_text="Name of the task function to execute.")
     param = models.TextField(help_text="JSON-encoded parameters for the task.")
     result = models.TextField(blank=True, help_text="JSON-encoded result or error message.")
 

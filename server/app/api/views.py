@@ -1,6 +1,8 @@
 from django.shortcuts import render, get_object_or_404
 from django.conf import settings
+from django.db import connection
 from rest_framework import generics, status
+from rest_framework.decorators import api_view
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from typing import Any, Dict
@@ -13,6 +15,7 @@ from .models import (
     Video,
     Thumbnail,
     VideoTranscript,
+    VideoSection,
     Episode,
     AsyncTaskItem,
 )
@@ -21,6 +24,7 @@ from .serializers import (
     ThumbnailSerializer,
     VideoUploadSerializer,
     VideoTranscriptSerializer,
+    VideoSectionSerializer,
     EpisodeSerializer,
     AsyncTaskItemSerializer,
     TriggerTaskSerializer,
@@ -28,6 +32,36 @@ from .serializers import (
 
 logger = logging.getLogger('polyu-video')
 
+
+# ======================
+# HEALTH CHECK
+# ======================
+
+@api_view(['GET'])
+def health_check(request):
+    """Server health check endpoint."""
+    db_ok = True
+    try:
+        connection.ensure_connection()
+    except Exception:
+        db_ok = False
+
+    storage_ok = os.path.isdir(settings.MEDIA_ROOT)
+    all_ok = db_ok and storage_ok
+
+    return Response({
+        "ok": all_ok,
+        "ready": all_ok,
+        "db": "connected" if db_ok else "error",
+        "storage": settings.MEDIA_ROOT if storage_ok else "error",
+        "cache": "none",
+        "logger": "polyu-video",
+    }, status=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# ======================
+# VIDEO VIEWS
+# ======================
 
 class VideoListView(generics.ListAPIView):
     """List all videos."""
@@ -85,7 +119,7 @@ class VideoUploadView(generics.CreateAPIView):
 
 class VideoTaskTriggerView(generics.GenericAPIView):
     """
-    POST /api/videos/<video_id>/trigger-tasks/
+    POST /api/videos/process/
 
     Triggers an asynchronous processing pipeline for an existing video.
     Ensures no duplicate active task chains are created.
@@ -129,9 +163,10 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         Task dependencies:
           - Task 1 (ASR), Task 2 (HLS), Task 3 (SSIM) run in parallel.
           - Task 4 (Thumbnails) depends on Task 3.
-          - Task 5 (Summary) depends on Task 4.
+          - Task 5 (Hybrid Chunking) depends on Task 4 (and reads ASR from DB).
+          - Task 6 (Summary) depends on Task 5.
         """
-        # Task 1: ASR + COS upload
+        # Task 1: ASR + COS upload (parallel, no deps)
         task1 = AsyncTaskItem.objects.create(
             video=video,
             title="Extract audio & generate transcript",
@@ -142,7 +177,7 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         )
         logger.debug("Created Task1 (ASR): %s for video %s", task1.id, video.id)
 
-        # Task 2: HLS streaming
+        # Task 2: HLS streaming (parallel, no deps)
         task2 = AsyncTaskItem.objects.create(
             video=video,
             title="Generate HLS",
@@ -153,7 +188,7 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         )
         logger.debug("Created Task2 (HLS): %s for video %s", task2.id, video.id)
 
-        # Task 3: SSIM-based motion detection
+        # Task 3: SSIM-based motion detection (parallel, no deps)
         task3 = AsyncTaskItem.objects.create(
             video=video,
             title="SSIM Motion Detection",
@@ -175,17 +210,32 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         )
         logger.debug("Created Task4 (Thumbnails): %s | Depends on: %s", task4.id, task3.id)
 
-        # Task 5: AI Summary (depends on Thumbnails)
+        # Task 5: Hybrid Chunking (depends on Thumbnails; reads ASR transcript from DB)
         task5 = AsyncTaskItem.objects.create(
+            video=video,
+            title="Hybrid video chunking",
+            description="Combine SSIM slide changes + ASR transcript for intelligent lecture segmentation",
+            func_name="task_hybrid_chunking",
+            param=json.dumps({"video_id": str(video.id)}),
+            previous=task4.id
+        )
+        logger.debug("Created Task5 (Hybrid Chunking): %s | Depends on: %s", task5.id, task4.id)
+
+        # Task 6: AI Summary (depends on Hybrid Chunking)
+        task6 = AsyncTaskItem.objects.create(
             video=video,
             title="Generate content summary",
             description="Create AI-generated summary using transcript and metadata",
             func_name="task_generate_summary",
             param=json.dumps({"video_id": str(video.id)}),
-            previous=task4.id
+            previous=task5.id
         )
-        logger.debug("Created Task5 (Summary): %s | Depends on: %s", task5.id, task4.id)
+        logger.debug("Created Task6 (Summary): %s | Depends on: %s", task6.id, task5.id)
 
+
+# ======================
+# TRANSCRIPT VIEWS
+# ======================
 
 class TranscriptDetailView(generics.GenericAPIView):
     """
@@ -205,6 +255,23 @@ class TranscriptDetailView(generics.GenericAPIView):
         serializer = VideoTranscriptSerializer(video_transcript)
         return Response(serializer.data)
 
+
+# ======================
+# SECTION VIEWS
+# ======================
+
+class VideoSectionListView(generics.ListAPIView):
+    """List all sections for a specific video."""
+    serializer_class = VideoSectionSerializer
+
+    def get_queryset(self):
+        video_id = self.kwargs['video_id']
+        return VideoSection.objects.filter(video_id=video_id).order_by('order', 'begin_time')
+
+
+# ======================
+# EPISODE VIEWS
+# ======================
 
 class EpisodeListView(generics.ListAPIView):
     """List all episodes."""
@@ -236,6 +303,10 @@ class EpisodeUpdateView(generics.UpdateAPIView):
     serializer_class = EpisodeSerializer
     lookup_field = 'id'
 
+
+# ======================
+# ASYNC TASK VIEWS
+# ======================
 
 class AsyncTaskItemCreateView(generics.CreateAPIView):
     """Create a new async task item."""

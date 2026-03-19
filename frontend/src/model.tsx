@@ -17,11 +17,10 @@ export interface Course {
 
 export interface ThumbnailItem {
   id: string;
-  timeSecond: number; // camelCase
+  timeSecond: number;
   imageUrl: string;
 }
 
-// Define TypeScript interfaces for type safety
 export interface Sentence {
   channel_id: number;
   sentence_id: number;
@@ -40,9 +39,14 @@ export interface TranscriptData {
   sentences: Sentence[];
 }
 
-// Define TypeScript interfaces for type safety
+// Video section produced by hybrid chunker
 export interface Section {
-  id: number;
-  begin_time: number; // in seconds
-  text: string;
+  id: string;
+  video: string;
+  title: string;
+  begin_time: number;  // in seconds
+  end_time: number;    // in seconds
+  transcript_text: string;
+  thumbnail_url: string | null;
+  order: number;
 }
