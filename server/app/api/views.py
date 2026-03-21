@@ -696,7 +696,7 @@ You help students understand content across ALL lectures in this course.
 - Mention which lecture/section each piece of info is from when citing
 - Use markdown formatting"""
 
-        llm = get_llm_client()
+        llm = get_llm_client(model="qwen3-max")
         tools = make_tools(self.video_ids[0])  # schema is same for any video
         messages = [{"role": "system", "content": COURSE_SYSTEM}]
         for msg in self.chat_history[-6:]:
@@ -811,3 +811,62 @@ You help students understand content across ALL lectures in this course.
                             "end_time": float(end_time), "type": ctype, "relevance": 0.8,
                         })
         return citations
+
+
+# ======================
+# TASK RETRY
+# ======================
+
+@csrf_exempt
+@api_view(['POST'])
+def task_retry_view(request, pk):
+    """
+    Retry a failed task and all cascade-blocked downstream tasks.
+    POST /api/tasks/<uuid>/retry/
+    
+    Resets the target task and all its downstream dependents to 'pending'.
+    """
+    try:
+        task = AsyncTaskItem.objects.get(id=pk)
+    except AsyncTaskItem.DoesNotExist:
+        return Response({"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if task.status not in ('error',):
+        return Response(
+            {"error": f"Can only retry tasks with status 'error', got '{task.status}'"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Collect this task + all downstream cascade-blocked tasks
+    tasks_to_reset = [task]
+    _collect_downstream_tasks(task, tasks_to_reset)
+
+    reset_ids = []
+    for t in tasks_to_reset:
+        t.status = 'pending'
+        t.result = ''
+        t.finished_at = None
+        t.save(update_fields=['status', 'result', 'finished_at'])
+        reset_ids.append(str(t.id))
+
+    logger.info(
+        f"RETRY: Reset {len(reset_ids)} task(s) to pending for video {task.video_id}: "
+        f"{', '.join(reset_ids)}"
+    )
+
+    return Response({
+        "message": f"Reset {len(reset_ids)} task(s) to pending",
+        "task_ids": reset_ids,
+    }, status=status.HTTP_200_OK)
+
+
+def _collect_downstream_tasks(parent_task, collected):
+    """Recursively find all tasks that depend on the given task."""
+    dependents = AsyncTaskItem.objects.filter(
+        previous=parent_task.id,
+        status='error'
+    )
+    for dep in dependents:
+        if dep not in collected:
+            collected.append(dep)
+            _collect_downstream_tasks(dep, collected)

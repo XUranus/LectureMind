@@ -407,6 +407,15 @@ def task_generate_thumbnails(input_data: Dict[str, Any]) -> Dict[str, Any]:
         video_file=video_file, time_seconds=frames, width=200, output_dir="./media/thumbnails"
     )
     count = update_thumbnails_for_video(video_id, thumbnails)
+
+    # Set first thumbnail as video cover
+    first_thumb = Thumbnail.objects.filter(video_id=video_id).order_by('time_second').first()
+    if first_thumb and first_thumb.image:
+        video = Video.objects.get(id=video_id)
+        video.cover = first_thumb.image.url
+        video.save(update_fields=['cover'])
+        logger.info(f"[Thumbnails] Set cover for video {video_id}: {first_thumb.image.url}")
+
     return {"video_id": video_id, "file": input_data['file'],
             "changes": input_data.get('changes', []), "thumbnail_count": count}
 
@@ -434,7 +443,7 @@ def task_hybrid_chunking(input_data: Dict[str, Any]) -> Dict[str, Any]:
         slide_change_times=slide_changes, asr_transcript=asr,
         video_duration_sec=duration, min_chunk_duration=30.0,
         silence_gap_threshold=2.0, semantic_similarity_threshold=0.5,
-        use_semantic_check=True,
+        use_semantic_check=False,  # disabled for low-memory systems (8GB RAM)
     )
 
     VideoSection.objects.filter(video_id=video_id).delete()
