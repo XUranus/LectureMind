@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Generator
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 # ======================

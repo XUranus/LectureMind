@@ -21,7 +21,7 @@ from api.lecture_video_slides_chunker import detect_slide_changes_multithreaded
 from api.lecture_video_hybrid_chunker import hybrid_chunk
 from api.utils import generate_master_playlist, generate_hls_renditions
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 # ======================

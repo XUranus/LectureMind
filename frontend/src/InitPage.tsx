@@ -47,7 +47,7 @@ const InitPage: React.FC<InitPageProps> = ({}) => {
       {/* Logo Placeholder - Replace with your actual logo */}
       <div className="mb-8">
         <div className="bg-indigo-600 text-white font-bold text-4xl w-40 h-40 rounded-xl flex items-center justify-center">
-          PolyU Video Agent
+          LectureMind
         </div>
       </div>
       

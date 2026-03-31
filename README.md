@@ -1,30 +1,49 @@
-# PolyU Video Agent
+# LectureMind
 
 An AI-powered lecture video analysis and summarization platform. Upload lecture videos, and the system automatically segments them, transcribes speech, detects slide transitions, generates knowledge summaries, and provides an intelligent chatbot for Q&A over lecture content.
 
-![Transcript View](screenshot/transcript.png)
+> **COMP5575** Group Project (PolyU 26 Spring Semester 2)
+
+![Transcript View](screenshot/screenshot.png)
 
 ---
 
 ## Table of Contents
 
-- [Project Background](#project-background)
-- [Features](#features)
-- [System Architecture](#system-architecture)
-- [Video-RAG Pipeline](#video-rag-pipeline)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [API Reference](#api-reference)
-- [Data Models](#data-models)
-- [Async Task Pipeline](#async-task-pipeline)
-- [Roadmap](#roadmap)
+- [LectureMind](#lecturemind)
+  - [Table of Contents](#table-of-contents)
+  - [Project Background](#project-background)
+  - [Features](#features)
+    - [Implemented](#implemented)
+    - [Planned](#planned)
+  - [System Architecture](#system-architecture)
+  - [Video-RAG Pipeline](#video-rag-pipeline)
+    - [Stage 1: Video Preprocessing](#stage-1-video-preprocessing)
+    - [Stage 2: Content Extraction](#stage-2-content-extraction)
+    - [Stage 3: Fine-Grained Knowledge Store](#stage-3-fine-grained-knowledge-store)
+    - [Stage 4: Coarse-Grained Knowledge Store](#stage-4-coarse-grained-knowledge-store)
+    - [Stage 5: RAG Query Engine](#stage-5-rag-query-engine)
+  - [Tech Stack](#tech-stack)
+  - [Project Structure](#project-structure)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Environment Setup](#environment-setup)
+  - [API Reference](#api-reference)
+    - [Videos](#videos)
+    - [Episodes (Courses)](#episodes-courses)
+    - [Tasks](#tasks)
+    - [Endpoints](#endpoints)
+  - [Data Models](#data-models)
+  - [Async Task Pipeline](#async-task-pipeline)
+    - [Current Task DAG](#current-task-dag)
+  - [Roadmap](#roadmap)
+  - [License](#license)
 
 ---
 
 ## Project Background
 
-The **PolyU Video Agent** is an advanced AI system designed to process lecture videos through a multi-stage pipeline: segmenting lectures into meaningful sections, transcribing audio to text, detecting slide transitions, summarizing concepts at multiple granularities, and enabling knowledge-point retrieval through a RAG-based chatbot.
+The **LectureMind** is an advanced AI system designed to process lecture videos through a multi-stage pipeline: segmenting lectures into meaningful sections, transcribing audio to text, detecting slide transitions, summarizing concepts at multiple granularities, and enabling knowledge-point retrieval through a RAG-based chatbot.
 
 The system transforms raw lecture video input into structured, searchable, and summarized knowledge, making it easy for students and educators to navigate, review, and query lecture content.
 
@@ -38,7 +57,7 @@ The system transforms raw lecture video input into structured, searchable, and s
 |---------|-------------|
 | **Video Upload & Management** | Drag-and-drop upload with progress tracking, CRUD operations, course/episode grouping |
 | **HLS Adaptive Streaming** | Multi-resolution transcoding (1080p/720p/480p/360p) with master playlist for adaptive playback |
-| **ASR Transcription** | Automatic speech recognition via Alibaba DashScope Qwen3-ASR with sentence-level timestamps, language detection, emotion tagging |
+| **ASR Transcription** | Automatic speech recognition via **Alibaba DashScope Qwen3-ASR** with sentence-level timestamps, language detection, emotion tagging |
 | **SSIM Slide Detection** | Multithreaded structural similarity analysis to detect slide transitions with configurable thresholds |
 | **Thumbnail Generation** | Automatic thumbnail extraction at detected slide change points |
 | **Async Task Pipeline** | DAG-based task execution engine with dependency chaining, concurrent processing, and error isolation |
@@ -125,21 +144,21 @@ The core AI functionality is powered by a **Video-RAG (Retrieval-Augmented Gener
 - **Slide Screenshot Capture**: Extract representative frames at detected transition points
 - **Hybrid Chunking**: Combine slide transitions + silence gaps + semantic similarity (sentence-transformers) to produce intelligent content segments
 
-### Stage 3: Fine-Grained Knowledge Store (Planned)
+### Stage 3: Fine-Grained Knowledge Store 
 For each video segment (slide + corresponding transcript):
 - Extract knowledge points using multimodal LLM (slide image + transcript text)
 - Generate per-segment summaries, key concepts, and terminology
 - Create dense vector embeddings for semantic retrieval
 - Store in vector database with metadata (timestamps, segment boundaries)
 
-### Stage 4: Coarse-Grained Knowledge Store (Planned)
+### Stage 4: Coarse-Grained Knowledge Store 
 Aggregate fine-grained knowledge across segments:
 - Identify thematic chapters by clustering related segments
 - Generate lecture-level summaries, outlines, and concept hierarchies
 - Build cross-reference links between related knowledge points
 - Produce structured mindmaps from the knowledge hierarchy
 
-### Stage 5: RAG Query Engine (Planned)
+### Stage 5: RAG Query Engine 
 - **Retrieval**: Semantic search over fine-grained and coarse-grained knowledge stores
 - **Augmentation**: Construct context windows from retrieved segments (transcript + slide + summary)
 - **Generation**: LLM generates grounded answers with source citations and timestamp references
@@ -160,8 +179,8 @@ Aggregate fine-grained knowledge across segments:
 | **NLP/Embeddings** | sentence-transformers (all-MiniLM-L6-v2) |
 | **LLM** | Qwen2.5 series (planned: 0.5B-7B local, qwen-turbo remote) |
 | **Cloud Storage** | Tencent COS (audio file hosting for ASR) |
-| **Database** | SQLite (development), planned migration to PostgreSQL |
-| **Agent Framework** | LangGraph (planned) |
+| **Database** | SQLite (development), migration to PostgreSQL |
+| **Agent Framework** | LangGraph  |
 | **Vector Database** | TBD (ChromaDB / Milvus / Qdrant) |
 
 ---
@@ -169,7 +188,7 @@ Aggregate fine-grained knowledge across segments:
 ## Project Structure
 
 ```
-PolyU-Video-Agent/
+LectureMind-Agent/
 ├── README.md
 ├── LICENSE                          # Apache 2.0
 ├── .env                             # Environment variables (COS, DashScope keys)
@@ -252,7 +271,7 @@ PolyU-Video-Agent/
 1. **Clone and configure environment variables**:
 ```bash
 git clone <repo-url>
-cd PolyU-Video-Agent
+cd LectureMind-Agent
 cp .env.example .env
 # Edit .env with your API keys:
 #   DASHSCOPE_API_KEY=your_dashscope_key
@@ -266,7 +285,7 @@ cp .env.example .env
 ```bash
 cd server
 conda env create -f environment.yml    # or: pip install -r requirements.txt
-conda activate polyu-video
+conda activate LectureMind
 cd app
 python manage.py migrate
 python manage.py runserver             # Start API server on :8000
@@ -324,7 +343,7 @@ All endpoints are prefixed with `/api/`.
 | `POST` | `/api/tasks/new/` | Create a task manually |
 | `GET` | `/api/tasks/<uuid>/` | Get task details |
 
-### Planned Endpoints
+### Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -349,7 +368,7 @@ Episode (course/lecture series)
         │     └── TranscriptSentence (timestamped sentences)
         ├── AsyncTaskItem (processing pipeline tasks, DAG)
         │
-        │  --- Planned ---
+        │  --- ---
         ├── VideoSection (thematic chapter boundaries)
         ├── KnowledgePoint (fine-grained knowledge entries)
         ├── KnowledgeSummary (coarse-grained summaries)

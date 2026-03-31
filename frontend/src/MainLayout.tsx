@@ -67,7 +67,7 @@ const AppShell: React.FC = () => {
             onClick={() => setCollapsed(!collapsed)}
             className="text-gray-700 hover:text-blue-600"
           />
-          <h1 className="ml-4 text-xl font-bold text-gray-800">PolyU Video Agent</h1>
+          <h1 className="ml-4 text-xl font-bold text-gray-800">LectureMind</h1>
         </div>
         <div className="flex items-center space-x-4">
           {isUploading && (

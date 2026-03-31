@@ -1,4 +1,4 @@
-# PolyU Video Agent Frontend
+# LectureMind Frontend
 
 - React.js
 - Typescript

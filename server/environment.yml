@@ -1,4 +1,4 @@
-name: PolyU-Video-Agent
+name: LectureMind-Agent
 channels:
   - defaults
 dependencies:

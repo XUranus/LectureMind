@@ -29,7 +29,7 @@ import logging
 import os
 from typing import Dict, Any, List, Optional, Generator, Tuple
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 AGENT_SYSTEM_PROMPT = """You are an expert teaching assistant for a video lecture. You help students understand lecture content by using available tools to find relevant information before answering.

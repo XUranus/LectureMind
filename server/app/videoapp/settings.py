@@ -207,7 +207,7 @@ LOGGING = {
         },
     },
     'loggers': {
-        'polyu-video': {
+        'LectureMind': {
             'handlers': ['console', 'app_file', 'task_file', 'error_file'],
             'level': 'DEBUG',
             'propagate': False,

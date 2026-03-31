@@ -16,7 +16,7 @@ import os
 import logging
 from typing import Dict, Any, List, Optional
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 # Default configuration
 DEFAULT_PERSIST_DIR = "./media/chromadb"

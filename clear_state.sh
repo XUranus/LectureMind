@@ -22,7 +22,7 @@ LOG_DIR="$APP_DIR/logs"
 DB_FILE="$APP_DIR/db.sqlite3"
 MIGRATIONS_DIR="$APP_DIR/api/migrations"
 
-echo "=== PolyU Video Agent — State Reset ==="
+echo "=== LectureMind — State Reset ==="
 echo ""
 echo "This will DELETE:"
 echo "  [DB]         $DB_FILE"

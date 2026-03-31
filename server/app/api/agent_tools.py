@@ -12,7 +12,7 @@ import json
 import logging
 from typing import List, Dict, Any
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 def _format_time(seconds: float) -> str:

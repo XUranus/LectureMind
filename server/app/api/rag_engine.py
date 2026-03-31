@@ -22,7 +22,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Generator, Tuple
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 RAG_SYSTEM_PROMPT = """You are a knowledgeable teaching assistant for a video lecture. Answer the student's question based on the lecture content provided below.

@@ -22,7 +22,7 @@ from django.utils import timezone
 from api.models import AsyncTaskItem
 from api.tasks import get_task_function
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 def load_dotenv_file():

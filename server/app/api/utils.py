@@ -296,7 +296,7 @@ def generate_master_playlist(
 
     # 1. generate thumbnails
     # thumbnails = generate_thumbnails_for_video(
-    #     video_file="/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/videos/zoom.mp4",
+    #     video_file="/home/xuranus/workspace/LectureMind-Agent/server/app/media/videos/zoom.mp4",
     #     time_seconds=[93.12, 95.04, 264.96, 267.36, 306.24, 308.64, 439.68, 442.08, 446.4, 591.84],
     #     width=200,
     #     output_dir="./media/thumbnails"
@@ -304,12 +304,12 @@ def generate_master_playlist(
 
     # for thumb in thumbnails:
     #     print(thumb)
-        #{'image_id': '4040a248-8f27-43dd-989f-d86d6ae0a37f', 'time_second': 446.4, 'image': '/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/thumbnails/4040a248-8f27-43dd-989f-d86d6ae0a37f.jpg'}
-        #{'image_id': '52d939b0-5fb4-4c20-b7c9-fd076de8fee4', 'time_second': 591.84, 'image': '/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/thumbnails/52d939b0-5fb4-4c20-b7c9-fd076de8fee4.jpg'}
+        #{'image_id': '4040a248-8f27-43dd-989f-d86d6ae0a37f', 'time_second': 446.4, 'image': '/home/xuranus/workspace/LectureMind-Agent/server/app/media/thumbnails/4040a248-8f27-43dd-989f-d86d6ae0a37f.jpg'}
+        #{'image_id': '52d939b0-5fb4-4c20-b7c9-fd076de8fee4', 'time_second': 591.84, 'image': '/home/xuranus/workspace/LectureMind-Agent/server/app/media/thumbnails/52d939b0-5fb4-4c20-b7c9-fd076de8fee4.jpg'}
 
     # 2. generate HLS renditions
     # generate_hls_renditions(
-    #     input_video_path="/home/xuranus/workspace/PolyU-Video-Agent/server/app/media/videos/zoom.mp4",
+    #     input_video_path="/home/xuranus/workspace/LectureMind-Agent/server/app/media/videos/zoom.mp4",
     #     video_id="114514",
     #     output_root="./media/streams"
     # )

@@ -27,7 +27,7 @@ from .serializers import (
     EpisodeSerializer, AsyncTaskItemSerializer, TriggerTaskSerializer,
 )
 
-logger = logging.getLogger('polyu-video')
+logger = logging.getLogger('LectureMind')
 
 
 # ======================
