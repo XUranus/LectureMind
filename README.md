@@ -36,7 +36,6 @@ An AI-powered lecture video analysis and summarization platform. Upload lecture 
   - [Data Models](#data-models)
   - [Async Task Pipeline](#async-task-pipeline)
     - [Current Task DAG](#current-task-dag)
-  - [Roadmap](#roadmap)
   - [License](#license)
 
 ---
@@ -250,7 +249,7 @@ LectureMind-Agent/
 │               ├── LectureChatbot.tsx     # Lecture Q&A chatbot
 │               └── CourseCreationModal.tsx
 │
-├── doc/                             # Documentation (architecture, design docs)
+├── docs/                            # Documentation
 └── screenshot/                      # UI screenshots
 ```
 
@@ -410,14 +409,6 @@ Upload Video
                          └──→ Task 5: AI Summary (stub)
                               (planned: LLM-powered summarization)
 ```
-
----
-
-## Roadmap
-
-See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) for the detailed architecture design and phased development plan.
-
----
 
 ## License
 
