@@ -14,7 +14,7 @@ style: |
 <style>
     .bottom-right {
     position: absolute;
-    right: 20px;
+    right: 0px;
     bottom: 20px;
     width: 50%;
   }
@@ -131,14 +131,25 @@ We sample frames at 10 FPS to balance accuracy with performance. Each frame is r
 
 1. **Slide Changes** (from SSIM detection)
    - Physical slide transitions
-
 2. **Silence Gaps** (from ASR transcript)
    - Gaps ≥ 2.0 seconds between sentences
    - Indicates natural pause points
-
 3. **Semantic Similarity** (optional, currently disabled)
    - Sentence-transformers analysis
    - Detects topic shifts in continuous speech
+
+<!--
+Speaker Notes:
+Hybrid chunking is where our system gets intelligent about segmentation. Instead of relying on a single signal, we combine three complementary approaches. 
+
+Slide changes give us physical boundaries. 
+Silence gaps from the ASR transcript indicate natural speaking pauses. 
+We also implemented semantic similarity analysis using sentence-transformers.
+-->
+
+---
+
+# Algorithm 2: Hybrid Video Chunking
 
 **Algorithm:**
 ```
@@ -154,25 +165,22 @@ Filter by min_chunk_duration (≥30s)
 Build final chunks with start/end times
 ```
 
-<!--
-Speaker Notes:
-Hybrid chunking is where our system gets intelligent about segmentation. Instead of relying on a single signal, we combine three complementary approaches. Slide changes give us physical boundaries. Silence gaps from the ASR transcript indicate natural speaking pauses. We also implemented semantic similarity analysis using sentence-transformers, though this is currently disabled on memory-constrained systems. The algorithm merges all candidate split points, filters them by minimum duration, optionally checks semantic continuity, and produces the final section boundaries. This hybrid approach produces much more natural segments than any single method alone.
--->
 
+<!--
+Speaker Note:
+The algorithm merges all candidate split points, filters them by minimum duration, optionally checks semantic continuity, and produces the final section boundaries. This hybrid approach produces much more natural segments than any single method alone.
+-->
 ---
 
 # Hybrid Chunking Example
 
 **Input:**
-- SSIM slide changes: `[10.2, 34.5, 78.9, 120.0, 180.5]`
-- ASR silence gaps: `[33.0, 77.5, 118.0, 250.0]`
-
-**Merged Candidates:** `[10.2, 33.0, 34.5, 77.5, 78.9, 118.0, 120.0, 180.5, 250.0]`
-
-**After Filtering** (min 30s duration):
-- Remove 33.0 (too close to 34.5)
-- Remove 77.5 (too close to 78.9)
-- Remove 118.0 (too close to 120.0)
+```
+SSIM slide changes: [10.2, 34.5, 78.9, 120.0, 180.5]
+ASR silence gaps:   [33.0, 77.5, 118.0, 250.0]
+Merged Candidates:  [10.2, 33.0, 34.5, 77.5, 78.9, 118.0, 120.0, 180.5, 250.0]
+After Filtering (min 30s duration): Remove 33.0 (too close to 34.5), 77.5 (too close to 78.9), 118.0 (too close to 120.0)
+```
 
 **Final Sections:**
 ```
@@ -192,33 +200,21 @@ Here's a concrete example of how hybrid chunking works. We start with slide chan
 
 # Knowledge Extraction Pipeline
 
-**After chunking, each section undergoes AI analysis:**
+1. Extract transcript text (from ASR), save to sqlite and chromadb
+2. Do Hybrid Chunking (Slides Changes + Silence Gaps + Semantic Similarity)
+3. Call LLM (**Qwen2.5-7b-instruct**) to generate knowledge points in JSON
+ - Prompt: *"Extract knowledge points from this lecture segment. {section text}"*
+```json
+{
+     "section_title": "Gradient Descent Basics",
+     "points": [{
+          "title": "Learning Rate",
+          "summary": "The learning rate controls step size...",
+          "terms": ["learning rate", "gradient", "convergence"],
+     ...}]}
+```
+4. Save KnowledgePoint records to sqlite and chromadb
 
-```
-For each VideoSection:
-    │
-    ├──→ Extract transcript text (from ASR)
-    │
-    ├──→ Find representative thumbnail
-    │
-    ├──→ Call LLM (Qwen2.5-7b-instruct)
-    │    Prompt: "Extract knowledge points from this lecture segment"
-    │
-    ├──→ Parse JSON response:
-    │    {
-    │      "section_title": "Gradient Descent Basics",
-    │      "points": [
-    │        {
-    │          "title": "Learning Rate",
-    │          "summary": "The learning rate controls step size...",
-    │          "terms": ["learning rate", "gradient", "convergence"],
-    │          "importance": 0.85
-    │        }
-    │      ]
-    │    }
-    │
-    └──→ Save KnowledgePoint records
-```
 
 <!--
 Speaker Notes:
@@ -242,8 +238,6 @@ Now I'll hand it over to my teammate who will discuss how we store this extracte
 
 # Vector Database Design
 
-**ChromaDB** - Embedded vector store for semantic search
-
 **What Gets Embedded:**
 
 | Content Type | Source | Embed Text Format | Count/Video |
@@ -252,24 +246,14 @@ Now I'll hand it over to my teammate who will discuss how we store this extracte
 | Section Transcripts | ASR output | First 2000 chars of transcript | 5-15 |
 
 **Embedding Model:** `all-MiniLM-L6-v2`
-- 384-dimensional vectors
-- ~80 MB model size
-- ~100 texts/sec encoding speed (CPU)
-- Cosine similarity for retrieval
-
-**Storage:**
-```
-media/chromadb/
-  chroma.sqlite3          # Metadata + document text
-  <uuid>/                 # HNSW index files
-    data_level0.bin
-    header.bin
-    link_lists.bin
-```
+- 384 dim vector
+- Cosine similarity
 
 <!--
 Speaker Notes:
-My presentation focuses on how we store and retrieve knowledge. We use ChromaDB, an embedded vector database that doesn't require a separate server. We embed two types of content: the structured knowledge points extracted by the LLM, and raw section transcripts. The embedding model is all-MiniLM-L6-v2, a lightweight but effective sentence transformer that produces 384-dimensional vectors. ChromaDB uses HNSW indexing for fast approximate nearest neighbor search. Typical storage is 1-5 MB per video, making it very efficient.
+My presentation focuses on how we store and retrieve knowledge.
+
+We embed two types of content: the structured knowledge points extracted by the LLM, and raw section transcripts. The embedding model is all-MiniLM-L6-v2, a lightweight but effective sentence transformer that produces 384-dimensional vectors. 
 -->
 
 ---
@@ -290,9 +274,16 @@ My presentation focuses on how we store and retrieve knowledge. We use ChromaDB,
 }
 ```
 
-**Key Operations:**
+<!--
+Speaker Notes:
+Each document in our vector store includes rich metadata. This enables filtered retrieval
+-->
 
-1. **Upsert (during processing):**
+---
+
+# Knowledge Store Architecture
+
+**Upsert (during processing):**
 ```python
 store.upsert(
     id="kp-uuid",
@@ -301,7 +292,7 @@ store.upsert(
 )
 ```
 
-2. **Query (at chat time):**
+**Query (at chat time):**
 ```python
 results = store.query(
     query_text="What is backpropagation?",
@@ -313,53 +304,15 @@ results = store.query(
 
 <!--
 Speaker Notes:
-Each document in our vector store includes rich metadata. This enables filtered retrieval - for example, searching within a specific video or filtering by content type. The upsert operation happens during the async task pipeline, specifically in task 7 (embed knowledge). At chat time, we query the vector store with the user's question, scoped to the relevant video. Results include both the embedding distance and a computed relevance score. This metadata is crucial for building proper citations in our chatbot responses.
+For example, searching within a specific video or filtering by content type. The upsert operation happens during the async task pipeline, specifically in task 7 (embed knowledge). At chat time, we query the vector store with the user's question, scoped to the relevant video. Results include both the embedding distance and a computed relevance score. This metadata is crucial for building proper citations in our chatbot responses.
 -->
 
 ---
 
 # RAG Engine: Retrieval-Augmented Generation
 
-**Two Operating Modes:**
+<div class="bottom-right"><img src="./assets/quickrag.png" ></div>
 
-| Mode | Endpoint | Latency | Use Case |
-|------|----------|---------|----------|
-| **Quick RAG** | `/api/videos/<id>/chat/stream/` | 2-5s | Factual questions |
-| **Agent** | `/api/videos/<id>/agent/stream/` | 5-15s | Complex reasoning |
-
-**Quick RAG Pipeline:**
-```
-User Question
-     │
-     ▼
-Embed question (all-MiniLM-L6-v2)
-     │
-     ▼
-Vector search (top-6, cosine similarity)
-     │
-     ▼
-Filter by relevance ≥ 0.2
-     │
-     ▼
-Build context prompt + Lecture Overview
-     │
-     ▼
-Stream LLM response (qwen3-max, temp=0.5)
-     │
-     ▼
-Return answer + citations
-```
-
-<!--
-Speaker Notes:
-Our RAG system operates in two modes. Quick RAG is a single-shot retrieval and generation pipeline, perfect for factual questions with clear answers in the lecture. The Agent mode uses a ReAct loop for multi-step reasoning, which my teammate will explain in detail. In Quick RAG, we embed the question, search the vector store, filter low-relevance results, and build a context-augmented prompt. We also inject the lecture summary as background context. The LLM then generates a grounded answer with citations. The entire process takes 2-5 seconds with streaming.
--->
-
----
-
-# RAG Prompt Engineering
-
-**System Prompt:**
 ```
 You are a knowledgeable teaching assistant for a video lecture.
 Answer the student's question based on the lecture content provided.
@@ -369,31 +322,28 @@ Instructions:
 - Cite sources using [Source N] notation
 - Be concise but thorough, use markdown formatting
 - Maintain an educational, helpful tone
-```
 
-**Context Template:**
-```markdown
-## Lecture Context
+Video: {video_title}
 
-### Video: {video_title}
+Lecture Overview: {summary_section}
 
-### Lecture Overview
-{summary_section}
-
-### Retrieved Sources:
+Retrieved Sources:
 [Source 1] (knowledge_point) "Gradient Descent" [02:00-03:00] (relevance: 0.85)
 Gradient descent is an optimization algorithm...
 
 [Source 2] (section_transcript) "Learning Rate" [05:00-06:30] (relevance: 0.72)
 The learning rate controls the step size...
 
----
 Student Question: {question}
 ```
 
 <!--
 Speaker Notes:
-Prompt engineering is critical for RAG quality. Our system prompt establishes the assistant's role and constraints. We explicitly instruct the LLM to answer only from provided context and to cite sources. The context template structures the retrieved information with clear formatting. Each source includes its type, title, timestamp range, and relevance score. This structured format helps the LLM understand which sources are most relevant and where they appear in the video. We also include the lecture overview summary, which provides broad context even when specific retrieved sources don't cover the topic.
+Our RAG system operates in two modes. Quick RAG Mode and Agentic Mode.
+
+Quick RAG is a single-shot retrieval and generation pipeline, perfect for factual questions with clear answers in the lecture. 
+
+In Quick RAG, we embed the question, search the vector store, filter low-relevance results, and build a context-augmented prompt. We also inject the lecture summary as background context. The LLM then generates a grounded answer with citations. The entire process takes 2-5 seconds with streaming.
 -->
 
 ---
@@ -401,24 +351,17 @@ Prompt engineering is critical for RAG quality. Our system prompt establishes th
 # Agent System: ReAct Multi-Step Reasoning
 
 **For complex questions requiring multiple information sources:**
+![](./assets/react.png)
 
-```
-User Question
-     │
-     ▼
-┌─────────────────────────────────────┐
-│ ReAct Loop (max 5 iterations):      │
-│                                     │
-│  1. LLM analyzes + decides tool     │
-│  2. Execute tool                    │
-│  3. Feed result back to LLM         │
-│  4. Decide: another tool OR answer  │
-│  5. Repeat until final response     │
-└─────────────────────────────────────┘
-     │
-     ▼
-Stream answer + tool steps + citations
-```
+
+<!--
+Speaker Notes:
+The Agent mode implements a ReAct loop - Reasoning plus Acting. Instead of a single retrieval, the LLM can iteratively consult different tools. This architecture enables sophisticated reasoning that simple RAG cannot achieve.
+-->
+
+---
+
+# Agent System: ReAct Multi-Step Reasoning
 
 **Available Tools:**
 - `search_knowledge(query)` - Vector search
@@ -427,10 +370,6 @@ Stream answer + tool steps + citations
 - `list_sections()` - All section titles/times
 - `get_transcript_at_time(start, end)` - Transcript slice
 
-<!--
-Speaker Notes:
-The Agent mode implements a ReAct loop - Reasoning plus Acting. Instead of a single retrieval, the LLM can iteratively consult different tools. For example, a question like "Compare how gradient descent is explained in the first half versus the second half" requires multiple steps: first identifying relevant sections, then retrieving details from each, then synthesizing a comparison. The LLM decides which tool to call at each step, with a maximum of 5 iterations to prevent infinite loops. This architecture enables sophisticated reasoning that simple RAG cannot achieve.
--->
 
 ---
 
@@ -452,49 +391,9 @@ Final: citations — [{source_num: 1, title: "Learning Rate", begin_time: 180, .
 Final: done — {tool_steps: [...]}
 ```
 
-**SSE Stream Events:**
-- `thinking` - Reasoning steps
-- `tool_call` - Tool invocations
-- `tool_result` - Tool outputs (300-char preview)
-- `token` - Answer text chunks
-- `citations` - Structured citation list
-- `done` - Completion signal
-
 <!--
 Speaker Notes:
-Here's a real execution trace. The agent first calls search_knowledge to find relevant content about learning rate and convergence. After seeing the results, it decides to get more detailed information from a specific section. Only after gathering sufficient context does it compose the final answer. Throughout this process, we stream events to the frontend using Server-Sent Events. This provides immediate feedback to the user - they see the thinking process, tool calls, and then the streaming answer. The citations are extracted from tool results and linked to specific timestamps, enabling click-to-seek functionality.
--->
-
----
-
-# Citation Schema & Frontend Integration
-
-**Citation Structure:**
-```json
-{
-  "source_num": 1,
-  "title": "Gradient Descent Basics",
-  "begin_time": 120.5,
-  "end_time": 180.0,
-  "type": "knowledge_point",
-  "relevance": 0.847
-}
-```
-
-**Frontend Rendering:**
-- Clickable citation badges: `[Source 1]`
-- Click → seek video to `begin_time`
-- Hover → show preview tooltip
-- Color-coded by type (knowledge point vs transcript)
-
-**Multi-Turn Context:**
-- Last 6 messages included in prompt
-- Enables follow-up questions: "Can you explain that more?"
-- Session persisted in database
-
-<!--
-Speaker Notes:
-Citations are crucial for trust and verification. Each citation includes the source number matching the LLM's [Source N] references, the title, timestamp range, content type, and relevance score. The frontend renders these as clickable badges. When a student clicks a citation, the video seeks to that timestamp, allowing them to verify the answer directly. We also support multi-turn conversations by including the last 6 messages in the prompt. This enables natural follow-up questions and clarifications. All sessions are persisted, so students can return to previous conversations.
+Here's a real execution trace. The agent first calls search_knowledge to find relevant content about learning rate and convergence. After seeing the results, it decides to get more detailed information from a specific section. Only after gathering sufficient context does it compose the final answer. 
 -->
 
 ---
@@ -528,14 +427,12 @@ class AsyncTaskItem(models.Model):
 
 **Task Processor:**
 - Polls every 5 seconds for pending tasks
-- `SELECT FOR UPDATE SKIP LOCKED` for concurrent safety
 - Chains outputs: `task[n].result` → `task[n+1].input`
 - Cascade failure: downstream tasks auto-marked as error
-- Retry mechanism: reset failed task + descendants
 
 <!--
 Speaker Notes:
-Our async task pipeline is a custom DAG executor built on Django. Each task record includes its type, status, dependency reference, and data payloads. The task processor is a management command that runs continuously, polling for pending tasks whose dependencies are satisfied. We use row-level locking with SKIP LOCKED to support multiple concurrent workers safely. When a task completes, its result is automatically merged into the next task's input. If a task fails, all downstream tasks are marked with cascade failure, preventing wasted computation. Failed tasks can be retried, which also resets all blocked descendants.
+Our async task pipeline is a custom DAG executor built on Django. Each task record includes its type, status, dependency reference, and data payloads. The task processor is a management command that runs continuously, polling for pending tasks whose dependencies are satisfied. When a task completes, its result is automatically merged into the next task's input. If a task fails, all downstream tasks are marked with cascade failure, preventing wasted computation. Failed tasks can be retried, which also resets all blocked descendants.
 -->
 
 ---
@@ -553,57 +450,12 @@ Our async task pipeline is a custom DAG executor built on Django. Each task reco
 | RAG Answer | qwen3-max | 0.5 | Grounded response |
 | Agent Reasoning | qwen3-max | 0.3 | Tool selection |
 
-**LLM Client Abstraction:**
-```python
-class LLMClient:
-    def chat(self, messages, temperature=0.5, max_tokens=2048)
-    def stream_chat(self, messages, tools=None)  # Function calling
-```
 
 <!--
 Speaker Notes:
-We leverage multiple models from Alibaba's Qwen family, each selected for its strengths. Qwen3-ASR handles speech recognition with sentence-level timestamps. For knowledge extraction and summarization, we use qwen2.5-7b-instruct - a good balance of capability and cost. For RAG answers and agent reasoning, we use qwen3-max, the most capable model with excellent function-calling support. Temperature is tuned per task: lower for structured output (0.3), higher for creative generation (0.5). Our LLM client provides a clean abstraction with OpenAI-compatible APIs, making it easy to swap models if needed.
--->
+We leverage multiple models from Alibaba's Qwen family, each selected for its strengths. Qwen3-ASR handles speech recognition with sentence-level timestamps. For knowledge extraction and summarization, we use qwen2.5-7b-instruct - a good balance of capability and cost. For RAG answers and agent reasoning, we use qwen3-max, the most capable model with excellent function-calling support. 
 
----
-
-# Knowledge Point Extraction Quality
-
-**Prompt Template:**
-```
-You are an expert educational content analyst. Analyze the lecture segment
-and extract structured knowledge points.
-
-Section: {section_title}
-Time range: {time_range}
-Transcript:
----
-{transcript}
----
-
-Extract in JSON format:
-{
-  "section_title": "Concise title (5-10 words)",
-  "points": [
-    {
-      "title": "Knowledge point title (3-8 words)",
-      "summary": "2-3 sentence explanation",
-      "terms": ["key term 1", "key term 2"],
-      "importance": 0.0-1.0
-    }
-  ]
-}
-```
-
-**Output Quality Controls:**
-- Truncate transcript to 3000 chars (focus on key content)
-- Skip sections with < 20 chars (silence-only segments)
-- Error isolation: continue on individual section failures
-- Logging: all LLM calls saved for debugging
-
-<!--
-Speaker Notes:
-Quality knowledge extraction depends heavily on prompt engineering. Our prompt establishes the expert persona, provides clear context with section title and time range, and specifies the exact JSON schema expected. We truncate transcripts to 3000 characters to focus on key content and stay within token limits. Sections with minimal transcript text are skipped as they likely contain only silence. We also implement error isolation - if one section fails, the task continues with remaining sections rather than failing entirely. All LLM calls are logged with full request/response details for debugging and quality analysis.
+Temperature is tuned per task: lower for structured output (0.3), higher for creative generation (0.5). Our LLM client provides a clean abstraction with OpenAI-compatible APIs, making it easy to swap models if needed.
 -->
 
 ---
@@ -612,17 +464,8 @@ Quality knowledge extraction depends heavily on prompt engineering. Our prompt e
 
 **Purpose:** Visual hierarchy of lecture concepts
 
-**Generation Pipeline:**
-```
-KnowledgeSummary.chapter_outline
-     +
-All KnowledgePoints (grouped by section)
-     │
-     ▼
-LLM Prompt: "Build hierarchical concept map"
-     │
-     ▼
-Parse JSON response:
+KnowledgePoints grouped by section feed to LLM: *Build hierarchical concept map*
+```json
 {
   "root": {
     "id": "root",
@@ -635,10 +478,7 @@ Parse JSON response:
         "children": [
           {"id": "kp1", "label": "Linear Regression", "time_range": [60, 180]},
           {"id": "kp2", "label": "Classification", "time_range": [180, 360]}
-        ]
-      }
-    ]
-  }
+        ]}]}
 }
 ```
 
@@ -655,40 +495,12 @@ The mindmap provides a visual overview of the lecture's concept hierarchy. We ga
 |-----------|----------|
 | **Memory constraints** (8GB systems) | Disabled semantic similarity check in chunking |
 | **LLM JSON parsing errors** | Robust parser handles fenced JSON, embedded JSON, raw JSON |
-| **Cascade failures in DAG** | Automatic downstream error marking + retry resets all |
-| **Concurrent task processing** | `SELECT FOR UPDATE SKIP LOCKED` row-level locking |
 | **Long video processing** | Frame sampling at 10 FPS, multithreaded SSIM |
 | **Grounded RAG answers** | Strict system prompt + relevance filtering + citations |
 
 <!--
 Speaker Notes:
-We faced several technical challenges during development. Memory constraints on 8GB systems forced us to disable the semantic similarity check in hybrid chunking. LLM responses sometimes included markdown fencing or prose around the JSON, so we built a robust parser that handles multiple formats. Cascade failures in the DAG were problematic early on, but we implemented automatic error propagation and a retry mechanism that resets all blocked descendants. Concurrent task processing required careful database locking to prevent race conditions. Long videos were addressed through frame sampling and multithreading. Finally, ensuring RAG answers are grounded in the lecture content required careful prompt engineering and relevance filtering.
--->
-
----
-
-# Results & Demo
-
-**Typical Processing Output** (60-minute lecture):
-
-| Metric | Value |
-|--------|-------|
-| Slide transitions detected | 12-18 |
-| Sections created | 8-12 |
-| Knowledge points extracted | 25-40 |
-| Processing time | 5-8 minutes |
-| Vector store size | 2-4 MB |
-
-**RAG Performance:**
-- Quick RAG latency: 2-5 seconds
-- Agent latency: 5-15 seconds
-- Citation accuracy: >90% (sources match answer content)
-
-**Demo:** [Live demonstration of upload → processing → chat]
-
-<!--
-Speaker Notes:
-Here are our typical results for a 60-minute lecture. We detect 12-18 slide transitions, create 8-12 sections, and extract 25-40 knowledge points. Total processing time is 5-8 minutes, with most time spent on LLM calls. The vector store is compact at 2-4 MB per video. RAG performance is excellent with 2-5 second latency for quick questions and 5-15 seconds for complex agent reasoning. Citation accuracy exceeds 90%, meaning the sources referenced in answers genuinely support the content. We'd now like to show a live demo of the complete workflow from upload to chat interaction.
+We faced several technical challenges during development. Memory constraints on 8GB systems forced us to disable the semantic similarity check in hybrid chunking. LLM responses sometimes included markdown fencing or prose around the JSON, so we built a robust parser that handles multiple formats. Cascade failures in the DAG were problematic early on, but we implemented automatic error propagation and a retry mechanism that resets all blocked descendants. Long videos were addressed through frame sampling and multithreading. Finally, ensuring RAG answers are grounded in the lecture content required careful prompt engineering and relevance filtering.
 -->
 
 ---
@@ -723,26 +535,31 @@ Looking ahead, we have several exciting enhancements planned. Multi-video course
 
 # Summary
 
-**LectureMind transforms lecture videos into interactive learning experiences through:**
+**LectureMind make lecture videos interactive learning experiences through:**
 
 1. **Automated Preprocessing**
    - SSIM slide detection (multithreaded, efficient)
    - Hybrid chunking (slide + silence + semantic)
    - ASR transcription with timestamps
-
 2. **AI Knowledge Extraction**
    - Fine-grained: Per-section knowledge points via LLM
    - Coarse-grained: Lecture-level summaries and chapters
    - Mindmap: Hierarchical concept visualization
-
 3. **Intelligent Q&A**
-   - Quick RAG: Fast, factual answers (2-5s)
-   - Agent mode: Multi-step reasoning (5-15s)
-   - Grounded answers with timestamp citations
+   - Quick RAG/Agent mode, grounded answers with timestamp citations
 
-**Thank you! Questions?**
 
 <!--
 Speaker Notes:
-To summarize, LectureMind transforms passive lecture videos into interactive learning experiences. Our automated preprocessing handles slide detection, intelligent chunking, and transcription. AI knowledge extraction produces both fine-grained knowledge points and coarse-grained summaries, visualized as an interactive mindmap. The RAG system enables intelligent Q&A with both fast factual answers and sophisticated multi-step reasoning. All answers are grounded in actual lecture content with clickable citations. We've built a complete end-to-end system that makes lecture content searchable, navigable, and conversational. Thank you for your attention. We're happy to take any questions.
+To summarize, LectureMind transforms passive lecture videos into interactive learning experiences. Our automated preprocessing handles slide detection, intelligent chunking, and transcription. AI knowledge extraction produces both fine-grained knowledge points and coarse-grained summaries, visualized as an interactive mindmap. The RAG system enables intelligent Q&A with both fast factual answers and sophisticated multi-step reasoning. All answers are grounded in actual lecture content with clickable citations. We've built a complete end-to-end system that makes lecture content searchable, navigable, and conversational.
+-->
+
+---
+
+# Thank you! 
+# Questions?
+
+<!--
+Speaker Notes:
+Thank you for your attention. We're happy to take any questions.
 -->
