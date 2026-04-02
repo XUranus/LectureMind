@@ -81,8 +81,6 @@ The system employs a DAG-based async task pipeline that enables parallel process
 This project makes the following technical contributions:
 
 \begin{enumerate}
-    \item \textbf{Multithreaded SSIM Slide Detection:} An efficient algorithm for detecting slide transitions in lecture videos using structural similarity index computation across 16 parallel worker threads, achieving 60$\times$ real-time processing speed.
-    
     \item \textbf{Hybrid Video Chunking:} A novel segmentation algorithm that combines three complementary signals (slide changes, silence gaps, semantic similarity) to produce natural, topically coherent video sections.
     
     \item \textbf{Hierarchical Knowledge Extraction:} A two-tier approach to knowledge summarization that extracts fine-grained knowledge points per section and aggregates them into coarse-grained lecture-level summaries with concept hierarchies.
@@ -91,7 +89,3 @@ This project makes the following technical contributions:
     
     \item \textbf{Citation-Backed Answers:} A grounding mechanism that links generated answers to specific video timestamps through structured citations, enabling students to verify information directly in the source material.
 \end{enumerate}
-
-\subsection{Document Organization}
-
-The remainder of this report is organized as follows: Section~\ref{sec:related-work} reviews related work in educational video analysis and RAG systems. Section~\ref{sec:architecture} presents the detailed system architecture. Sections~\ref{sec:preprocessing} through~\ref{sec:rag} describe the core algorithms. Section~\ref{sec:implementation} discusses implementation details. Section~\ref{sec:evaluation} presents evaluation results. Section~\ref{sec:conclusion} concludes with future work directions.

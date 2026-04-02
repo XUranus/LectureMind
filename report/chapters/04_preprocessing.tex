@@ -52,22 +52,7 @@ HLS (HTTP Live Streaming) encoding prepares videos for adaptive bitrate streamin
 
 \subsubsection{Multi-Resolution Transcoding}
 
-The video is transcoded into four resolution variants:
-
-\begin{table}[H]
-    \centering
-    \caption{HLS Encoding Resolutions}
-    \begin{tabular}{@{}lll@{}}
-        \toprule
-        \textbf{Name} & \textbf{Resolution} & \textbf{Bitrate} \\ \midrule
-        1080p & 1920$\times$1080 & 5000 kbps \\
-        720p & 1280$\times$720 & 2800 kbps \\
-        480p & 854$\times$480 & 1400 kbps \\
-        360p & 640$\times$360 & 800 kbps \\ \bottomrule
-    \end{tabular}
-\end{table}
-
-Each variant is segmented into 10-second TS (MPEG Transport Stream) chunks. A master M3U8 playlist references all variant playlists, enabling the frontend player to automatically select the optimal quality based on available bandwidth.
+The video is transcoded into four resolution variants. Each variant is segmented into 10-second TS (MPEG Transport Stream) chunks. A master M3U8 playlist references all variant playlists, enabling the frontend player to automatically select the optimal quality based on available bandwidth.
 
 \subsubsection{FFmpeg Command Structure}
 
@@ -171,16 +156,5 @@ Several optimizations enable efficient processing:
 \subsection{Thumbnail Generation (Task 4)}
 
 Once slide change timestamps are identified, representative thumbnails are extracted at each transition point.
-
-\subsubsection{Extraction Algorithm}
-
-For each detected slide change at timestamp $t$:
-
-\begin{enumerate}
-    \item Seek to frame at time $t + 0.5$ seconds (slight offset to ensure new slide is fully visible)
-    \item Extract frame and resize to 640$\times$360 pixels
-    \item Save as JPEG with 85\% quality
-    \item Store metadata (timestamp, file path) in database
-\end{enumerate}
 
 These thumbnails serve multiple purposes: visual preview in the transcript viewer, representative images for sections, and visual context for LLM-based knowledge extraction.
