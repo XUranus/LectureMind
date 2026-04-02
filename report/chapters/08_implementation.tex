@@ -1,0 +1,106 @@
+\section{Implementation Details}
+\label{sec:implementation}
+
+\subsection{Technology Stack}
+
+\begin{table}[H]
+    \centering
+    \caption{Technology Stack}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Layer} & \textbf{Technology} & \textbf{Version} \\ \midrule
+        Frontend & React & 19 \\
+        Frontend Language & TypeScript & 5.x \\
+        UI Framework & Ant Design & 6 \\
+        Video Player & @mux/mux-video-react & latest \\
+        Backend & Python & 3.10 \\
+        Web Framework & Django & 5.2 \\
+        API Framework & Django REST Framework & 3.15 \\
+        ASR Service & Alibaba DashScope Qwen3-ASR & - \\
+        LLM & Qwen2.5 / Qwen3-max & - \\
+        Vector DB & ChromaDB & 0.4.x \\
+        Embeddings & sentence-transformers & 2.x \\
+        Video Processing & FFmpeg & 6.x \\
+        Computer Vision & OpenCV & 4.x \\
+        Cloud Storage & Tencent COS & - \\
+        Database & SQLite (dev) / PostgreSQL (prod) & - \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{API Endpoints}
+
+Key REST API endpoints:
+
+\begin{table}[H]
+    \centering
+    \caption{Core API Endpoints}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Method} & \textbf{Endpoint} & \textbf{Description} \\ \midrule
+        POST & /api/videos/upload/ & Upload video \\
+        POST & /api/videos/process/ & Trigger processing \\
+        GET & /api/videos/\{id\}/transcript/ & Get transcript \\
+        GET & /api/videos/\{id\}/sections/ & Get sections \\
+        GET & /api/videos/\{id\}/knowledge/ & Get knowledge points \\
+        GET & /api/videos/\{id\}/summary/ & Get summary \\
+        GET & /api/videos/\{id\}/mindmap/ & Get mindmap \\
+        POST & /api/videos/\{id\}/chat/stream/ & Quick RAG chat \\
+        POST & /api/videos/\{id\}/agent/stream/ & Agent chat \\
+        GET & /api/tasks/video/\{id\}/ & Get task status \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{LLM Integration}
+
+The LLM client provides an OpenAI-compatible abstraction:
+
+\begin{lstlisting}[language=Python, caption={LLM Client Interface}]
+class LLMClient:
+    def __init__(self, api_key, base_url, model):
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.model = model
+    
+    def chat(self, messages, temperature=0.5, max_tokens=2048):
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    
+    def stream_chat(self, messages, tools=None):
+        # Generator yielding tokens as they arrive
+        ...
+    
+    def chat_with_tools(self, messages, tools, temperature=0.3):
+        # Function calling support
+        ...
+\end{lstlisting}
+
+This abstraction enables easy model swapping and consistent interface across different LLM providers.
+
+\subsection{Error Handling and Logging}
+
+Comprehensive error handling ensures system reliability:
+
+\begin{itemize}
+    \item \textbf{Task-level errors:} Caught and recorded in AsyncTaskItem.error\_message
+    \item \textbf{Cascade failures:} Downstream tasks automatically marked as error
+    \item \textbf{LLM call logging:} All requests/responses saved to logs/llm\_calls/
+    \item \textbf{Retry mechanism:} Failed tasks can be reset and retried via API
+\end{itemize}
+
+\subsection{Memory Optimization}
+
+Several techniques reduce memory usage for deployment on modest hardware:
+
+\begin{itemize}
+    \item Lazy initialization of embedding model (loaded on first use)
+    \item Semantic similarity check disabled by default (saves 200MB)
+    \item Frame preprocessing reduces SSIM memory to ~1MB
+    \item Batch processing for embedding upserts (100 items per batch)
+    \item Streaming LLM responses avoid buffering full responses
+\end{itemize}
+
+These optimizations enable the system to run on machines with 8GB RAM.

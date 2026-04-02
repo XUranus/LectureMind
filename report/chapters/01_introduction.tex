@@ -1,0 +1,97 @@
+\section{Introduction}
+\label{sec:introduction}
+
+\subsection{Background and Motivation}
+
+The rapid growth of online education and remote learning has led to an unprecedented accumulation of lecture video content. Universities worldwide have recorded thousands of hours of lectures, making them available to students through learning management systems. However, this abundance of content presents a paradox: while more educational resources are available than ever before, students struggle to efficiently navigate, review, and extract knowledge from lengthy video recordings.
+
+As students who often watch lectures video playback, we identified several key challenges: \cite{guo2014video}:
+
+\begin{enumerate}
+    \item \textbf{Navigation Difficulty:} Linear video playback makes it time-consuming to locate specific topics or concepts within a lecture.
+    \item \textbf{Information Overload:} A typical 60-minute lecture contains dense information that is difficult to summarize and review efficiently.
+    \item \textbf{Passive Consumption:} Traditional video watching is a one-way experience without interactive engagement or comprehension verification.
+    \item \textbf{Review Inefficiency:} Preparing for examinations requires repeated viewing of relevant segments, which is labor-intensive without proper indexing.
+    \item \textbf{Question Resolution:} Students often have specific questions about lecture content but lack efficient means to find answers within video material.
+\end{enumerate}
+
+These challenges motivate the development of intelligent systems that can automatically process lecture videos, extract structured knowledge, and enable interactive querying. Recent advances in artificial intelligence, particularly in automatic speech recognition (ASR), and large language models (LLMs), provide the technological foundation for such a system.
+
+\subsection{Project Objectives}
+
+LectureMind aims to address the aforementioned challenges through the following objectives:
+
+\begin{enumerate}
+    \item \textbf{Automatic Content Segmentation:} Detect slide transitions and segment lectures into meaningful topical sections without manual intervention.
+    \item \textbf{Accurate Transcription:} Generate sentence-level transcripts with precise timestamps for all spoken content.
+    \item \textbf{Knowledge Extraction:} Automatically identify and extract key concepts, terminology, and explanations from lecture content.
+    \item \textbf{Structured Summarization:} Produce multi-granularity summaries ranging from section-level knowledge points to lecture-level concept hierarchies.
+    \item \textbf{Interactive Querying:} Enable students to ask natural language questions and receive accurate, citation-backed answers grounded in lecture content.
+    \item \textbf{Visual Knowledge Representation:} Generate interactive mindmaps that provide hierarchical overviews of lecture concepts.
+\end{enumerate}
+
+\subsection{System Overview}
+
+LectureMind processes lecture videos through a multi-stage pipeline that transforms raw video input into an interactive knowledge base. Figure~\ref{fig:system-overview} illustrates the overall system architecture.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.5cm,
+        box/.style={rectangle, draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
+        arrow/.style={->, >=stealth, thick}
+    ]
+        % Input
+        \node[box, fill=blue!10] (input) {Video Input};
+        
+        % Preprocessing
+        \node[box, fill=green!10, below of=input] (preprocess) {Preprocessing\\ASR | HLS | SSIM};
+        
+        % Chunking
+        \node[box, fill=yellow!10, below of=preprocess] (chunking) {Hybrid Chunking\\Slide + Silence + Semantic};
+        
+        % Knowledge
+        \node[box, fill=orange!10, below of=chunking] (knowledge) {Knowledge Extraction\\Fine-grained | Coarse-grained};
+        
+        % Storage
+        \node[box, fill=purple!10, below of=knowledge] (storage) {Vector Database\\ChromaDB};
+        
+        % Query
+        \node[box, fill=red!10, below of=storage] (query) {RAG Query Engine\\Quick RAG | Agent};
+        
+        % Output
+        \node[box, fill=cyan!10, below of=query] (output) {Interactive Output\\Chat | Mindmap | Citations};
+        
+        % Arrows
+        \draw[arrow] (input) -- (preprocess);
+        \draw[arrow] (preprocess) -- (chunking);
+        \draw[arrow] (chunking) -- (knowledge);
+        \draw[arrow] (knowledge) -- (storage);
+        \draw[arrow] (storage) -- (query);
+        \draw[arrow] (query) -- (output);
+    \end{tikzpicture}
+    \caption{LectureMind System Architecture Overview}
+    \label{fig:system-overview}
+\end{figure}
+
+The system employs a DAG-based async task pipeline that enables parallel processing where dependencies allow. Tasks with no dependencies (ASR transcription, HLS encoding, SSIM slide detection) execute concurrently, while downstream tasks (thumbnail generation, hybrid chunking, knowledge extraction) chain sequentially based on their data requirements.
+
+\subsection{Key Contributions}
+
+This project makes the following technical contributions:
+
+\begin{enumerate}
+    \item \textbf{Multithreaded SSIM Slide Detection:} An efficient algorithm for detecting slide transitions in lecture videos using structural similarity index computation across 16 parallel worker threads, achieving 60$\times$ real-time processing speed.
+    
+    \item \textbf{Hybrid Video Chunking:} A novel segmentation algorithm that combines three complementary signals (slide changes, silence gaps, semantic similarity) to produce natural, topically coherent video sections.
+    
+    \item \textbf{Hierarchical Knowledge Extraction:} A two-tier approach to knowledge summarization that extracts fine-grained knowledge points per section and aggregates them into coarse-grained lecture-level summaries with concept hierarchies.
+    
+    \item \textbf{Dual-Mode RAG System:} Implementation of both Quick RAG for low-latency factual queries and a ReAct agent for complex multi-step reasoning, with five specialized tools for lecture content retrieval.
+    
+    \item \textbf{Citation-Backed Answers:} A grounding mechanism that links generated answers to specific video timestamps through structured citations, enabling students to verify information directly in the source material.
+\end{enumerate}
+
+\subsection{Document Organization}
+
+The remainder of this report is organized as follows: Section~\ref{sec:related-work} reviews related work in educational video analysis and RAG systems. Section~\ref{sec:architecture} presents the detailed system architecture. Sections~\ref{sec:preprocessing} through~\ref{sec:rag} describe the core algorithms. Section~\ref{sec:implementation} discusses implementation details. Section~\ref{sec:evaluation} presents evaluation results. Section~\ref{sec:conclusion} concludes with future work directions.
