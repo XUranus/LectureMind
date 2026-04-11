@@ -14,6 +14,7 @@ urlpatterns = [
     path('videos/delete/<uuid:pk>/', views.VideoDeleteView.as_view(), name='video-delete'),
     path('videos/update/<uuid:id>/', views.VideoUpdateView.as_view(), name='video-update'),
     path('videos/<uuid:video_id>/thumbnails/', views.ThumbnailListView.as_view(), name='thumbnail-list'),
+    path('videos/<uuid:video_id>/slide-ocr/', views.SlideOCRListView.as_view(), name='slide-ocr-list'),
     path('videos/<uuid:video_id>/transcript/', views.TranscriptDetailView.as_view(), name='transcript-detail'),
     path('videos/<uuid:video_id>/sections/', views.VideoSectionListView.as_view(), name='section-list'),
     path('videos/<uuid:video_id>/knowledge/', views.KnowledgePointsByVideoView.as_view(), name='knowledge-list'),
@@ -50,6 +51,10 @@ urlpatterns = [
     path('tasks/new/', views.AsyncTaskItemCreateView.as_view(), name='new-task-list'),
     path('tasks/<uuid:pk>/', views.AsyncTaskItemDetailView.as_view(), name='task-detail'),
     path('tasks/<uuid:pk>/retry/', views.task_retry_view, name='task-retry'),
+
+    # System Configuration
+    path('config/', views.system_config_list, name='config-list'),
+    path('config/update/', views.system_config_update, name='config-update'),
 ]
 
 if settings.DEBUG:

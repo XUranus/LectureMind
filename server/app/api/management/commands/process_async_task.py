@@ -176,7 +176,8 @@ class Command(BaseCommand):
                     return
 
                 task.status = 'running'
-                task.save(update_fields=['status'])
+                task.progress = 0
+                task.save(update_fields=['status', 'progress'])
                 logger.info(f"STARTED task {task.id} | Func: {task.func_name} | Video: {task.video_id}")
 
                 input_data = self._get_task_input(task)
@@ -190,8 +191,9 @@ class Command(BaseCommand):
 
                 task.result = json.dumps(result_data)
                 task.status = 'done'
+                task.progress = 100
                 task.finished_at = timezone.now()
-                task.save(update_fields=['result', 'status', 'finished_at'])
+                task.save(update_fields=['result', 'status', 'progress', 'finished_at'])
 
                 logger.info(
                     f"COMPLETED task {task.id} | Func: {task.func_name} | "

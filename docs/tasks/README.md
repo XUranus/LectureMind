@@ -4,7 +4,7 @@ This directory contains detailed documentation for each async processing task in
 
 ## Pipeline Overview
 
-When a video is uploaded and processing is triggered via `POST /api/videos/process/`, a directed acyclic graph (DAG) of 9 tasks is created and executed by the async task processor (`python manage.py process_async_task`).
+When a video is uploaded and processing is triggered via `POST /api/videos/process/`, a directed acyclic graph (DAG) of 10 tasks is created and executed by the async task processor (`python manage.py process_async_task`).
 
 ### Task DAG
 
@@ -15,7 +15,9 @@ When a video is uploaded and processing is triggered via `POST /api/videos/proce
                                            │
                 T3 ─────────────────────> T4: task_generate_thumbnails
                                            │
-                T4 ─────────────────────> T5: task_hybrid_chunking
+               T4 ──────────────────────> T4b: task_slides_ocr
+                                           │
+              T4b ──────────────────────> T5: task_hybrid_chunking
                                            │
                 T5 ─────────────────────> T6: task_fine_grained_knowledge
                                            │
@@ -29,7 +31,8 @@ When a video is uploaded and processing is triggered via `POST /api/videos/proce
 **Key points:**
 - T1, T2, T3 run in parallel with no dependencies
 - T4 depends on T3 (needs slide change timestamps)
-- T5 depends on T4 (needs thumbnails) and reads ASR transcript from database (T1 must be complete)
+- T4b depends on T4 (needs thumbnail images for OCR)
+- T5 depends on T4b (needs OCR completed before chunking) and reads ASR transcript from database (T1 must be complete)
 - T6-T9 form a sequential chain for AI-powered analysis
 
 ### Task Processor
@@ -57,7 +60,8 @@ Failed tasks can be retried via:
 | 2 | HLS adaptive streaming | [task_hls_streaming.md](task_hls_streaming.md) | None |
 | 3 | SSIM slide detection | [task_ssim_move_detection.md](task_ssim_move_detection.md) | None |
 | 4 | Thumbnail generation | [task_generate_thumbnails.md](task_generate_thumbnails.md) | T3 |
-| 5 | Hybrid video chunking | [task_hybrid_chunking.md](task_hybrid_chunking.md) | T4, T1 (via DB) |
+| 4b | Slide OCR text extraction | [task_slides_ocr.md](task_slides_ocr.md) | T4 |
+| 5 | Hybrid video chunking | [task_hybrid_chunking.md](task_hybrid_chunking.md) | T4b, T1 (via DB) |
 | 6 | Knowledge point extraction | [task_fine_grained_knowledge.md](task_fine_grained_knowledge.md) | T5 |
 | 7 | Knowledge embedding | [task_embed_knowledge.md](task_embed_knowledge.md) | T6 |
 | 8 | Coarse-grained summary | [task_coarse_grained_summary.md](task_coarse_grained_summary.md) | T7 |

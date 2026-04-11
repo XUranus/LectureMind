@@ -240,6 +240,35 @@ class KnowledgeMindmap(models.Model):
 
 
 
+
+class SlideOCR(models.Model):
+    """OCR text extracted from a slide thumbnail image using a vision-language model."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    thumbnail = models.OneToOneField(
+        Thumbnail, on_delete=models.CASCADE, related_name='slide_ocr',
+        help_text="The thumbnail image this OCR text was extracted from."
+    )
+    video = models.ForeignKey(
+        Video, on_delete=models.CASCADE, related_name='slide_ocrs',
+        help_text="Denormalized FK for query efficiency."
+    )
+    ocr_text = models.TextField(help_text="Raw text content extracted from the slide image by VL model.")
+    time_second = models.FloatField(help_text="Timestamp (seconds) of the slide frame, copied from thumbnail.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"SlideOCR @ {self.time_second}s for Video {self.video_id}"
+
+    class Meta:
+        ordering = ['time_second']
+        indexes = [
+            models.Index(fields=['video', 'time_second']),
+        ]
+        verbose_name = "Slide OCR"
+        verbose_name_plural = "Slide OCRs"
+
+
 class ChatSession(models.Model):
     """A chat conversation session between a user and the RAG chatbot for a video."""
 
@@ -292,6 +321,60 @@ class ChatMessage(models.Model):
         indexes = [models.Index(fields=['session', 'created_at'])]
 
 
+
+class SystemConfig(models.Model):
+    """Key-value configuration store for system-wide settings (singleton pattern)."""
+
+    key = models.CharField(max_length=128, primary_key=True, help_text="Configuration key.")
+    value = models.TextField(blank=True, help_text="Configuration value (stored as string).")
+    description = models.CharField(max_length=512, blank=True, help_text="Human-readable description.")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.key} = {self.value[:50]}"
+
+    class Meta:
+        ordering = ['key']
+        verbose_name = "System Configuration"
+        verbose_name_plural = "System Configurations"
+
+    # Default settings for reference
+    # Keys whose values should be masked in API responses
+    SECRET_KEYS = {"dashscope_api_key", "cos_secret_id", "cos_secret_key"}
+
+    DEFAULTS = {
+        "llm_model": ("qwen2.5-7b-instruct", "Default LLM model for task pipeline"),
+        "llm_api_base": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM API base URL"),
+        "chat_model": ("qwen3-max", "Model for chat/agent endpoints"),
+        "vl_model": ("qwen2.5-vl-72b-instruct", "Vision-language model for slide OCR"),
+        "dashscope_api_key": ("", "DashScope API key for LLM and ASR"),
+        "cos_secret_id": ("", "Tencent COS SecretId"),
+        "cos_secret_key": ("", "Tencent COS SecretKey"),
+        "cos_region": ("", "Tencent COS region (e.g. ap-guangzhou)"),
+        "cos_bucket": ("", "Tencent COS bucket name"),
+    }
+
+    @classmethod
+    def get(cls, key: str, default: str = "") -> str:
+        """Get a config value, falling back to DEFAULTS then to the provided default."""
+        try:
+            return cls.objects.get(key=key).value
+        except cls.DoesNotExist:
+            if key in cls.DEFAULTS:
+                return cls.DEFAULTS[key][0]
+            return default
+
+    @classmethod
+    def get_all(cls) -> dict:
+        """Get all config values, merging DB values with defaults."""
+        result = {}
+        for key, (default_val, desc) in cls.DEFAULTS.items():
+            result[key] = {"value": default_val, "description": desc}
+        for obj in cls.objects.all():
+            result[obj.key] = {"value": obj.value, "description": obj.description}
+        return result
+
+
 class AsyncTaskItem(models.Model):
     """Unit of async work in a processing pipeline with dependency chaining."""
 
@@ -317,6 +400,7 @@ class AsyncTaskItem(models.Model):
         help_text="UUID of the preceding task that must complete first."
     )
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default='pending')
+    progress = models.IntegerField(default=0, help_text="Task progress percentage 0-100.")
     created_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 

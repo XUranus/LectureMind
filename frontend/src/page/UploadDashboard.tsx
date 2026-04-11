@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import { RcFile } from 'antd/es/upload';
 import { v4 as uuidv4 } from 'uuid';
+import { useNavigate } from 'react-router-dom';
 import { API_PREFIX } from '../config';
 
 import { Course } from '../model'
@@ -16,6 +17,7 @@ interface UploadDashboardProps {
 }
 
 const UploadDashboard: React.FC<UploadDashboardProps> = ({ setUploadProgress }) => {
+  const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [unnerUploadProgress, setInnerUploadProgress] = useState(0);
@@ -97,8 +99,13 @@ const UploadDashboard: React.FC<UploadDashboardProps> = ({ setUploadProgress }) 
         try {
           const response = JSON.parse(xhr.responseText);
           console.log('Upload successful:', response);
-          requestTriggerAsyncTask(response['id'])
-          simulateProcessing(); // Optional: show processing state
+          const videoId = response['id'];
+          requestTriggerAsyncTask(videoId);
+          message.success('Video uploaded! Redirecting to analysis page...');
+          // Navigate to the video detail page after a brief delay
+          setTimeout(() => {
+            navigate(`/lecture/${videoId}`);
+          }, 1000);
         } catch (e) {
           message.error('Invalid server response');
         }

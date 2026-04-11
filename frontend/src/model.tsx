@@ -22,6 +22,16 @@ export interface ThumbnailItem {
   imageUrl: string;
 }
 
+export interface SlideOCRItem {
+  id: string;
+  thumbnail: string;
+  video: string;
+  ocr_text: string;
+  time_second: number;
+  thumbnail_url: string | null;
+  created_at: string;
+}
+
 export interface Sentence {
   channel_id: number;
   sentence_id: number;

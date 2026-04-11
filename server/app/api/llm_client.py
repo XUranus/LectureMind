@@ -292,6 +292,98 @@ class LLMClient:
             logger.error(f"LLM streaming call failed: {e}")
             raise RuntimeError(f"LLM streaming call failed: {e}") from e
 
+
+    def chat_vl(
+        self,
+        prompt: str,
+        image_urls: List[str],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """
+        Vision-language chat: send text + images for multimodal understanding.
+
+        Uses OpenAI-compatible multimodal message format supported by
+        DashScope VL models (e.g. qwen2.5-vl-72b-instruct).
+
+        Args:
+            prompt: Text prompt describing what to extract from the image(s).
+            image_urls: List of image URLs (http/https or local file:// URIs).
+            system_prompt: Optional system message.
+            model: Override model (defaults to qwen2.5-vl-72b-instruct).
+            temperature: Override default temperature.
+            max_tokens: Override default max_tokens.
+
+        Returns:
+            The assistant's response text.
+        """
+        if not self._client:
+            raise RuntimeError(
+                "LLM client not initialized. Install openai package and set API key."
+            )
+
+        vl_model = model or _get_config("vl_model", "qwen2.5-vl-72b-instruct")
+
+        # Build multimodal content array
+        content_parts = []
+        for url in image_urls:
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": url},
+            })
+        content_parts.append({
+            "type": "text",
+            "text": prompt,
+        })
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": content_parts})
+
+        import time as _time
+        _t0 = _time.time()
+        try:
+            response = self._client.chat.completions.create(
+                model=vl_model,
+                messages=messages,
+                temperature=temperature if temperature is not None else 0.3,
+                max_tokens=max_tokens or self.max_tokens,
+            )
+            resp_content = response.choices[0].message.content or ""
+            _dur = (_time.time() - _t0) * 1000
+            usage_dict = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            } if response.usage else None
+            logger.info(
+                f"VL response: model={vl_model}, "
+                f"tokens={response.usage.total_tokens if response.usage else 'N/A'}, "
+                f"images={len(image_urls)}, duration={_dur:.0f}ms"
+            )
+            _log_llm_call(
+                method="chat_vl", messages=messages,
+                response_text=resp_content, model=vl_model,
+                temperature=temperature if temperature is not None else 0.3,
+                max_tokens=max_tokens or self.max_tokens,
+                usage=usage_dict, duration_ms=_dur,
+            )
+            return resp_content
+        except Exception as e:
+            _dur = (_time.time() - _t0) * 1000
+            logger.error(f"VL API call failed: {e}")
+            _log_llm_call(
+                method="chat_vl", messages=[{"role": "user", "content": f"[{len(image_urls)} images] {prompt[:200]}"}],
+                response_text="", model=vl_model,
+                temperature=temperature if temperature is not None else 0.3,
+                max_tokens=max_tokens or self.max_tokens,
+                error=str(e), duration_ms=_dur,
+            )
+            raise RuntimeError(f"VL API call failed: {e}") from e
+
     def chat_json(
         self,
         prompt: str,
@@ -338,16 +430,46 @@ class LLMClient:
 _default_client: Optional[LLMClient] = None
 
 
+def _get_config(key: str, default: str = "") -> str:
+    """Try reading from SystemConfig, fall back to env/default."""
+    try:
+        from api.models import SystemConfig
+        val = SystemConfig.get(key)
+        if val:
+            return val
+    except Exception:
+        pass
+    return default
+
+
 def get_llm_client(**kwargs) -> LLMClient:
     """
     Get the default LLM client singleton, or create one with custom settings.
 
     If called with no arguments, returns (or creates) a shared default client.
     If called with arguments, always creates a new client.
+    Overrides from SystemConfig take priority when creating a fresh client.
     """
     global _default_client
     if kwargs:
+        # Apply SystemConfig overrides for model if not explicitly set
+        if "model" in kwargs:
+            model_val = kwargs["model"]
+            # Map well-known keys to SystemConfig
+            config_key_map = {
+                "qwen3-max": "chat_model",
+                "qwen2.5-vl-72b-instruct": "vl_model",
+            }
+            config_key = config_key_map.get(model_val)
+            if config_key:
+                configured_model = _get_config(config_key)
+                if configured_model:
+                    kwargs["model"] = configured_model
         return LLMClient(**kwargs)
     if _default_client is None:
-        _default_client = LLMClient()
+        # Apply SystemConfig overrides for default task pipeline model
+        model = _get_config("llm_model") or os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+        api_base = _get_config("llm_api_base") or os.environ.get("LLM_API_BASE", DEFAULT_API_BASE)
+        api_key = _get_config("dashscope_api_key") or os.environ.get("DASHSCOPE_API_KEY", "")
+        _default_client = LLMClient(model=model, api_base=api_base, api_key=api_key)
     return _default_client

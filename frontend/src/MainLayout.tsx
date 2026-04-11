@@ -9,6 +9,7 @@ import {
   MenuUnfoldOutlined,
   BookOutlined,
   CheckSquareOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -19,6 +20,7 @@ import TaskDashboard from './page/TaskDashboard';
 import CourseDashboard from './page/CourseDashboard';
 import CourseDetailPage from './page/CourseDetailPage';
 import VideoDashboard from './page/VideoDashboard';
+import SettingsPage from './page/SettingsPage';
 
 const { Header, Sider, Content } = Layout;
 
@@ -27,6 +29,7 @@ const menuItems: MenuProps['items'] = [
   { key: 'Videos', icon: <VideoCameraOutlined />, label: 'Videos' },
   { key: 'Courses', icon: <BookOutlined />, label: 'Courses' },
   { key: 'Tasks', icon: <CheckSquareOutlined />, label: 'Tasks' },
+  { key: 'Settings', icon: <SettingOutlined />, label: 'Settings' },
 ];
 
 const menuKey2Links: Record<string, string> = {
@@ -34,12 +37,14 @@ const menuKey2Links: Record<string, string> = {
   Videos: '/videos',
   Courses: '/courses',
   Tasks: '/tasks',
+  Settings: '/settings',
 };
 
 const linkToMenuKey = (pathname: string): string => {
   if (pathname.startsWith('/videos') || pathname.startsWith('/lecture')) return 'Videos';
   if (pathname.startsWith('/courses')) return 'Courses';
   if (pathname.startsWith('/tasks')) return 'Tasks';
+  if (pathname.startsWith('/settings')) return 'Settings';
   return 'Home';
 };
 
@@ -97,6 +102,7 @@ const AppShell: React.FC = () => {
             <Route path="/tasks" element={<TaskDashboard />} />
             <Route path="/videos" element={<VideoDashboard />} />
             <Route path="/lecture/:videoId" element={<LectureVideoAnalysis />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/playground" element={<PlayGround videoId="113514" />} />
           </Routes>
         </Content>

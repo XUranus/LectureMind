@@ -38,6 +38,7 @@ citations, sources_text = self._retrieve_context(query)
 
 ```
 [Source 1] (knowledge_point) "Gradient Descent" [02:00 - 03:00] (relevance: 0.85)
+[Source 2] (slide_ocr) "Slide @ 02:15" [02:15 - 02:15] (relevance: 0.78)
 Gradient descent is an optimization algorithm used to minimize the loss function...
 ```
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_PREFIX } from '../config';
-import { Card, Tag, Spin, Tooltip, Empty, Button, message, Collapse } from 'antd';
+import { Card, Tag, Spin, Tooltip, Empty, Button, message, Collapse, Progress } from 'antd';
 import {
   CheckCircleOutlined,
   LoadingOutlined,
@@ -20,6 +20,7 @@ interface Task {
   created_at: string;
   finished_at: string | null;
   status: 'pending' | 'running' | 'done' | 'error';
+  progress?: number;
   result?: string;
   previous?: string | null;
 }
@@ -84,7 +85,11 @@ const TaskItem: React.FC<{
             </Tooltip>
           )}
           {task.status === 'done' && <Tag color="success" className="text-xs">Done</Tag>}
-          {task.status === 'running' && <Tag color="processing" className="text-xs">Running</Tag>}
+          {task.status === 'running' && (
+            <div className="flex items-center gap-2">
+              <Tag color="processing" className="text-xs">Running</Tag>
+            </div>
+          )}
           {task.status === 'pending' && (
             isCascadePending(task, allTasks)
               ? <Tooltip title="Blocked by failed predecessor"><Tag color="warning" className="text-xs">Blocked</Tag></Tooltip>
@@ -107,6 +112,11 @@ const TaskItem: React.FC<{
         <div className="mt-2 ml-5 p-2 bg-orange-100 border border-orange-200 rounded text-xs text-orange-700">
           Blocked: {errInfo.error}
           {errInfo.originalError && <span className="block mt-1">Root cause: {errInfo.originalError}</span>}
+        </div>
+      )}
+      {task.status === 'running' && task.progress !== undefined && task.progress > 0 && (
+        <div className="mt-2 ml-5 mr-2">
+          <Progress percent={task.progress} size="small" status="active" strokeColor="#1677ff" />
         </div>
       )}
       <div className="text-xs text-gray-400 mt-1 ml-5">

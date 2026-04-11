@@ -88,6 +88,28 @@ Metadata:
 }
 ```
 
+#### 3. Slide OCR Text (`type: "slide_ocr"`)
+
+Embedded during `task_embed_knowledge` from `SlideOCR` records (extracted by `task_slides_ocr` using Qwen2.5-VL-72B-Instruct).
+
+```
+Embed text: first 2000 characters of OCR-extracted slide text
+```
+
+Metadata:
+```json
+{
+  "video_id": "uuid",
+  "section_id": "uuid",
+  "type": "slide_ocr",
+  "title": "Slide @ 02:15",
+  "begin_time": 135.0,
+  "end_time": 135.0
+}
+```
+
+Each slide OCR record is matched to its containing section by time overlap (`begin_time <= time_second <= end_time`). This allows RAG queries to retrieve text visible on slides alongside spoken transcript content and extracted knowledge points.
+
 ### Key Operations
 
 #### Upsert (Single)
@@ -145,6 +167,7 @@ task_embed_knowledge
   ├── delete_by_video(video_id)    ← clean previous embeddings
   ├── upsert_batch(knowledge_points)
   ├── upsert_batch(section_transcripts)
+  ├── upsert_batch(slide_ocr_texts)
   └── update embedding_id references
      │
      ▼ (runtime queries)

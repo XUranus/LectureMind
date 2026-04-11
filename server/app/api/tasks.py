@@ -14,7 +14,7 @@ from django.conf import settings
 from api.utils import generate_thumbnails_for_video, get_local_file_path
 from api.models import (
     Video, Thumbnail, VideoTranscript, TranscriptSentence,
-    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap,
+    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap, SlideOCR,
 )
 from api.dashscope_asr import DashScopeASRClient
 from api.lecture_video_slides_chunker import detect_slide_changes_multithreaded
@@ -123,6 +123,21 @@ Rules:
 - Return ONLY valid JSON"""
 
 
+
+SLIDE_OCR_PROMPT = """Extract ALL visible text content from this lecture slide image. 
+
+Rules:
+- Extract every piece of text you can see: titles, bullet points, paragraphs, labels, captions, equations, code snippets, table content, etc.
+- Preserve the hierarchical structure using markdown formatting (headings, bullet points, numbered lists)
+- For mathematical equations, use LaTeX notation (e.g., $E = mc^2$)
+- For code snippets, use markdown code blocks with language annotation
+- For tables, use markdown table format
+- For diagrams/charts, describe the text labels and any visible data
+- If the slide appears to be blank or contains only decorative elements with no readable text, respond with: [NO TEXT CONTENT]
+- Do NOT describe the visual layout or design elements — only extract text content
+- Return the extracted text directly, no JSON wrapping needed"""
+
+
 # ======================
 # HELPER FUNCTIONS
 # ======================
@@ -227,6 +242,18 @@ def _parse_llm_json(response_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             pass
     raise ValueError(f"Could not parse JSON from LLM: {response_text[:300]}")
+
+
+
+def _report_progress(video_id: str, func_name: str, progress: int) -> None:
+    """Update the progress field of the currently running task."""
+    from api.models import AsyncTaskItem
+    try:
+        AsyncTaskItem.objects.filter(
+            video_id=video_id, func_name=func_name, status='running'
+        ).update(progress=min(max(progress, 0), 100))
+    except Exception as e:
+        logger.debug(f"Failed to update progress: {e}")
 
 
 def _format_time(seconds: float) -> str:
@@ -346,14 +373,16 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
 
     # --- Upload to Tencent COS ---
     from qcloud_cos import CosConfig, CosS3Client
-    cos_region = os.environ.get('COS_REGION', '')
-    cos_id = os.environ.get('COS_SECRECT_ID', '')
-    cos_key_env = os.environ.get('COS_SECRECT_KEY', '')
-    cos_bucket = os.environ.get('COS_BUCKET', '')
+    from api.models import SystemConfig
+    # Read COS credentials: SystemConfig > env vars
+    cos_region = SystemConfig.get('cos_region') or os.environ.get('COS_REGION', '')
+    cos_id = SystemConfig.get('cos_secret_id') or os.environ.get('COS_SECRECT_ID', '')
+    cos_key_env = SystemConfig.get('cos_secret_key') or os.environ.get('COS_SECRECT_KEY', '')
+    cos_bucket = SystemConfig.get('cos_bucket') or os.environ.get('COS_BUCKET', '')
     if not all([cos_region, cos_id, cos_key_env, cos_bucket]):
         raise RuntimeError(
-            "COS credentials not configured. Required env vars: "
-            "COS_REGION, COS_SECRECT_ID, COS_SECRECT_KEY, COS_BUCKET"
+            "COS credentials not configured. Set them in Settings page or "
+            "via env vars: COS_REGION, COS_SECRECT_ID, COS_SECRECT_KEY, COS_BUCKET"
         )
 
     config = CosConfig(Region=cos_region, SecretId=cos_id, SecretKey=cos_key_env)
@@ -365,7 +394,9 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
     logger.info(f"[ASR] COS upload complete, signed_url length={len(signed_url)}")
 
     # --- ASR transcription via DashScope ---
-    asr_client = DashScopeASRClient(region="beijing")
+    from api.models import SystemConfig as _SC
+    asr_api_key = _SC.get('dashscope_api_key') or os.environ.get('DASHSCOPE_API_KEY', '')
+    asr_client = DashScopeASRClient(region="beijing", api_key=asr_api_key or None)
     logger.info(f"[ASR] Submitting to DashScope ASR...")
     transcript = asr_client.transcribe_audio(file_url=signed_url, language="en", timeout=600.0)
 
@@ -506,6 +537,7 @@ def task_fine_grained_knowledge(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 total_kp += 1
             processed += 1
+            _report_progress(video_id, "task_fine_grained_knowledge", int((processed) / sections.count() * 100))
         except Exception as e:
             logger.error(f"[Fine-Grained] Section {section.order} failed: {e}")
             continue
@@ -534,6 +566,7 @@ def task_embed_knowledge(input_data: Dict[str, Any]) -> Dict[str, Any]:
             "begin_time": kp.section.begin_time, "end_time": kp.section.end_time,
             "importance": kp.importance,
         })
+    _report_progress(video_id, "task_embed_knowledge", 30)
     emb_kp = store.upsert_batch(ids, texts, metas) if ids else 0
 
     sections = VideoSection.objects.filter(video_id=video_id).order_by('order')
@@ -548,13 +581,44 @@ def task_embed_knowledge(input_data: Dict[str, Any]) -> Dict[str, Any]:
             "type": "section_transcript", "title": s.title,
             "begin_time": s.begin_time, "end_time": s.end_time,
         })
+    _report_progress(video_id, "task_embed_knowledge", 60)
     emb_sec = store.upsert_batch(s_ids, s_texts, s_metas) if s_ids else 0
 
     for kp in kps:
         kp.embedding_id = str(kp.id)
     KnowledgePoint.objects.bulk_update(list(kps), ['embedding_id'])
 
-    return {"video_id": video_id, "embedded_knowledge_points": emb_kp, "embedded_sections": emb_sec}
+    # Embed slide OCR text
+    ocr_records = SlideOCR.objects.filter(video_id=video_id).order_by('time_second')
+    ocr_ids, ocr_texts, ocr_metas = [], [], []
+    for ocr in ocr_records:
+        if not ocr.ocr_text or len(ocr.ocr_text.strip()) < 10:
+            continue
+        ocr_ids.append(f"slide-ocr-{ocr.id}")
+        ocr_texts.append(ocr.ocr_text[:2000])
+        # Find which section this slide belongs to (by time overlap)
+        matching_section = VideoSection.objects.filter(
+            video_id=video_id,
+            begin_time__lte=ocr.time_second,
+            end_time__gte=ocr.time_second,
+        ).first()
+        ocr_metas.append({
+            "video_id": video_id,
+            "section_id": str(matching_section.id) if matching_section else "",
+            "type": "slide_ocr",
+            "title": f"Slide @ {_format_time(ocr.time_second)}",
+            "begin_time": ocr.time_second,
+            "end_time": ocr.time_second,
+        })
+    _report_progress(video_id, "task_embed_knowledge", 90)
+    emb_ocr = store.upsert_batch(ocr_ids, ocr_texts, ocr_metas) if ocr_ids else 0
+
+    return {
+        "video_id": video_id,
+        "embedded_knowledge_points": emb_kp,
+        "embedded_sections": emb_sec,
+        "embedded_slide_ocr": emb_ocr,
+    }
 
 
 def task_coarse_grained_summary(input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -713,6 +777,97 @@ def task_generate_mindmap(input_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+
+def task_slides_ocr(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    OCR slide thumbnails using Qwen2.5-VL-72B-Instruct vision-language model.
+
+    For each thumbnail of the video, sends the image to the VL model to extract
+    all visible text content. Results are stored as SlideOCR records linked to
+    each thumbnail, and will later be embedded into the vector store for RAG.
+    """
+    from api.llm_client import get_llm_client
+    from django.conf import settings as django_settings
+
+    video_id = input_data['video_id']
+    logger.info(f"[Slides OCR] Processing video_id={video_id}")
+
+    thumbnails = Thumbnail.objects.filter(video_id=video_id).order_by('time_second')
+    if not thumbnails.exists():
+        logger.warning(f"[Slides OCR] No thumbnails found for video {video_id}")
+        return {"video_id": video_id, "ocr_count": 0, "skipped": 0}
+
+    # Delete existing OCR records for this video (idempotent re-run)
+    SlideOCR.objects.filter(video_id=video_id).delete()
+
+    llm = get_llm_client()
+    ocr_count = 0
+    skipped = 0
+
+    for thumb in thumbnails:
+        if not thumb.image:
+            skipped += 1
+            continue
+
+        # Build the image URL — use absolute file path for local serving
+        # DashScope VL API needs an accessible URL; for local files we use file:// or
+        # construct the Django media URL. Since DashScope is a remote API, we need
+        # to encode the image as a base64 data URI.
+        try:
+            image_path = thumb.image.path
+            if not os.path.isfile(image_path):
+                logger.warning(f"[Slides OCR] Image file not found: {image_path}")
+                skipped += 1
+                continue
+
+            # Read image and encode as base64 data URI for the VL API
+            import base64
+            with open(image_path, 'rb') as img_file:
+                img_data = img_file.read()
+            # Determine MIME type from extension
+            ext = os.path.splitext(image_path)[1].lower()
+            mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
+            mime_type = mime_map.get(ext, 'image/jpeg')
+            b64_str = base64.b64encode(img_data).decode('utf-8')
+            image_url = f"data:{mime_type};base64,{b64_str}"
+
+            response = llm.chat_vl(
+                prompt=SLIDE_OCR_PROMPT,
+                image_urls=[image_url],
+                system_prompt="You are an expert OCR system specialized in extracting text from lecture slides. Extract all visible text accurately.",
+                temperature=0.1,
+                max_tokens=2048,
+            )
+
+            ocr_text = response.strip()
+            if not ocr_text or ocr_text == "[NO TEXT CONTENT]":
+                logger.info(f"[Slides OCR] No text content in slide @ {thumb.time_second}s")
+                skipped += 1
+                continue
+
+            SlideOCR.objects.create(
+                thumbnail=thumb,
+                video_id=video_id,
+                ocr_text=ocr_text,
+                time_second=thumb.time_second,
+            )
+            ocr_count += 1
+            total_thumbs = thumbnails.count()
+            logger.info(
+                f"[Slides OCR] Extracted {len(ocr_text)} chars from slide @ {thumb.time_second}s "
+                f"({ocr_count}/{total_thumbs})"
+            )
+            _report_progress(video_id, "task_slides_ocr", int((ocr_count + skipped) / total_thumbs * 100))
+
+        except Exception as e:
+            logger.error(f"[Slides OCR] Failed for slide @ {thumb.time_second}s: {e}")
+            skipped += 1
+            continue
+
+    logger.info(f"[Slides OCR] Complete: {ocr_count} slides OCR'd, {skipped} skipped for video {video_id}")
+    return {"video_id": video_id, "ocr_count": ocr_count, "skipped": skipped}
+
+
 # ======================
 # TASK REGISTRY
 # ======================
@@ -721,6 +876,7 @@ TASK_REGISTRY: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     "task_hls_streaming": task_hls_streaming,
     "task_ssim_move_detection": task_ssim_move_detection,
     "task_generate_thumbnails": task_generate_thumbnails,
+    "task_slides_ocr": task_slides_ocr,
     "task_hybrid_chunking": task_hybrid_chunking,
     "task_fine_grained_knowledge": task_fine_grained_knowledge,
     "task_embed_knowledge": task_embed_knowledge,

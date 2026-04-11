@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, Tooltip, Spin, Button, message } from 'antd';
+import { Tag, Tooltip, Spin, Button, message, Progress } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -16,6 +16,7 @@ interface TaskItem {
   id: string;
   title: string;
   status: 'pending' | 'running' | 'done' | 'error';
+  progress?: number;
   result?: string;
   previous?: string | null;
 }
@@ -126,11 +127,12 @@ const VideoTaskStatus: React.FC<{ videoId: string | undefined }> = ({ videoId })
             const err = parseError(task);
             const isCascade = err?.type === 'CascadeFailure';
             return (
-              <div key={task.id} className="flex items-center gap-2 text-sm">
-                {statusIcon(task.status)}
-                <span className={task.status === 'error' ? 'text-red-600 font-medium' : 'text-gray-600'}>
-                  {task.title}
-                </span>
+              <div key={task.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-sm">
+                  {statusIcon(task.status)}
+                  <span className={task.status === 'error' ? 'text-red-600 font-medium' : 'text-gray-600'}>
+                    {task.title}
+                  </span>
                 {task.status === 'error' && err && (
                   <Tooltip title={err.error}>
                     <Tag color={isCascade ? 'warning' : 'error'} className="text-xs m-0">
@@ -144,6 +146,12 @@ const VideoTaskStatus: React.FC<{ videoId: string | undefined }> = ({ videoId })
                     onClick={() => handleRetry(task.id)}>
                     Retry
                   </Button>
+                )}
+                </div>
+                {task.status === 'running' && task.progress !== undefined && task.progress > 0 && (
+                  <div className="ml-5">
+                    <Progress percent={task.progress} size="small" status="active" strokeColor="#1677ff" />
+                  </div>
                 )}
               </div>
             );

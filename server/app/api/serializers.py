@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional
 from rest_framework import serializers
 from .models import (
     Episode, Video, Thumbnail, VideoTranscript, TranscriptSentence,
-    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap,
-    ChatSession, ChatMessage, AsyncTaskItem,
+    VideoSection, KnowledgePoint, KnowledgeSummary, KnowledgeMindmap, SlideOCR,
+    ChatSession, ChatMessage, AsyncTaskItem, SystemConfig,
 )
 
 
@@ -18,6 +18,20 @@ class ThumbnailSerializer(serializers.ModelSerializer):
         if not obj.image: return None
         req = self.context.get('request')
         return req.build_absolute_uri(obj.image.url) if req else obj.image.url
+
+
+
+class SlideOCRSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    class Meta:
+        model = SlideOCR
+        fields = ['id', 'thumbnail', 'video', 'ocr_text', 'time_second', 'thumbnail_url', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    def get_thumbnail_url(self, obj):
+        if not obj.thumbnail or not obj.thumbnail.image: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.thumbnail.image.url) if req else obj.thumbnail.image.url
 
 
 class VideoSerializer(serializers.ModelSerializer):
@@ -157,5 +171,11 @@ class AsyncTaskItemSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     class Meta:
         model = AsyncTaskItem
-        fields = ['id', 'video', 'title', 'description', 'func_name', 'result', 'previous', 'created_at', 'finished_at', 'status']
+        fields = ['id', 'video', 'title', 'description', 'func_name', 'result', 'previous', 'created_at', 'finished_at', 'status', 'progress']
         read_only_fields = ['id', 'created_at', 'finished_at']
+
+
+class SystemConfigSerializer(serializers.Serializer):
+    key = serializers.CharField(max_length=128)
+    value = serializers.CharField(allow_blank=True)
+    description = serializers.CharField(allow_blank=True, required=False)

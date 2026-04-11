@@ -15,16 +15,17 @@ from rest_framework.response import Response
 
 from .models import (
     Video, Thumbnail, VideoTranscript, VideoSection, KnowledgePoint,
-    KnowledgeSummary, KnowledgeMindmap, ChatSession, ChatMessage,
-    Episode, AsyncTaskItem,
+    KnowledgeSummary, KnowledgeMindmap, SlideOCR, ChatSession, ChatMessage,
+    Episode, AsyncTaskItem, SystemConfig,
 )
 from .serializers import (
     VideoSerializer, ThumbnailSerializer, VideoUploadSerializer,
     VideoTranscriptSerializer, VideoSectionSerializer,
     KnowledgePointSerializer, SectionWithKnowledgeSerializer,
-    KnowledgeSummarySerializer, KnowledgeMindmapSerializer,
+    SlideOCRSerializer, KnowledgeSummarySerializer, KnowledgeMindmapSerializer,
     ChatSessionSerializer, ChatSessionDetailSerializer, ChatMessageSerializer,
     EpisodeSerializer, AsyncTaskItemSerializer, TriggerTaskSerializer,
+    SystemConfigSerializer,
 )
 
 logger = logging.getLogger('LectureMind')
@@ -78,6 +79,16 @@ class ThumbnailListView(generics.ListAPIView):
     def get_serializer_context(self) -> Dict[str, Any]:
         return {'request': self.request}
 
+
+class SlideOCRListView(generics.ListAPIView):
+    """List all slide OCR results for a video, ordered by time."""
+    serializer_class = SlideOCRSerializer
+    def get_queryset(self):
+        return SlideOCR.objects.filter(video_id=self.kwargs['video_id']).order_by('time_second')
+    def get_serializer_context(self) -> Dict[str, Any]:
+        return {'request': self.request}
+
+
 class VideoUploadView(generics.CreateAPIView):
     queryset = Video.objects.all()
     serializer_class = VideoUploadSerializer
@@ -115,10 +126,11 @@ class VideoTaskTriggerView(generics.GenericAPIView):
 
     def _create_processing_chain(self, video: Video) -> None:
         """
-        Task DAG (9 tasks):
+        Task DAG (10 tasks):
           T1 (ASR), T2 (HLS), T3 (SSIM) — parallel
           T4 (Thumbnails) <- T3
-          T5 (Hybrid Chunking) <- T4
+          T4b (Slides OCR) <- T4
+          T5 (Hybrid Chunking) <- T4b
           T6 (Fine-Grained Knowledge) <- T5
           T7 (Embed Knowledge) <- T6
           T8 (Coarse Summary) <- T7
@@ -139,9 +151,13 @@ class VideoTaskTriggerView(generics.GenericAPIView):
         t4 = AsyncTaskItem.objects.create(video=video, title="Generate thumbnails",
             func_name="task_generate_thumbnails",
             param=json.dumps({"video_id": str(video.id)}), previous=t3.id)
+        t4b = AsyncTaskItem.objects.create(video=video, title="OCR slide text extraction",
+            description="Extract text from slide images using Qwen2.5-VL-72B-Instruct",
+            func_name="task_slides_ocr",
+            param=json.dumps({"video_id": str(video.id)}), previous=t4.id)
         t5 = AsyncTaskItem.objects.create(video=video, title="Hybrid video chunking",
             func_name="task_hybrid_chunking",
-            param=json.dumps({"video_id": str(video.id)}), previous=t4.id)
+            param=json.dumps({"video_id": str(video.id)}), previous=t4b.id)
         t6 = AsyncTaskItem.objects.create(video=video, title="Extract knowledge points",
             func_name="task_fine_grained_knowledge",
             param=json.dumps({"video_id": str(video.id)}), previous=t5.id)
@@ -870,3 +886,59 @@ def _collect_downstream_tasks(parent_task, collected):
         if dep not in collected:
             collected.append(dep)
             _collect_downstream_tasks(dep, collected)
+
+# ======================
+# SYSTEM CONFIGURATION
+# ======================
+
+@api_view(['GET'])
+def system_config_list(request):
+    """Get all system configuration with defaults. Secret values are masked."""
+    all_config = SystemConfig.get_all()
+    result = []
+    for key, info in all_config.items():
+        value = info["value"]
+        # Mask secret values: show only last 4 chars
+        is_secret = key in SystemConfig.SECRET_KEYS
+        if is_secret and value and len(value) > 4:
+            masked = "*" * (len(value) - 4) + value[-4:]
+        elif is_secret and value:
+            masked = "****"
+        else:
+            masked = value
+        result.append({
+            "key": key,
+            "value": masked,
+            "description": info.get("description", ""),
+            "is_secret": is_secret,
+        })
+    return Response(result)
+
+
+@api_view(['POST'])
+def system_config_update(request):
+    """Update one or more configuration values."""
+    configs = request.data if isinstance(request.data, list) else [request.data]
+    updated = []
+    for item in configs:
+        key = item.get("key")
+        value = item.get("value", "")
+        if not key:
+            continue
+        desc = item.get("description", "")
+        # Look up default description if not provided
+        if not desc and key in SystemConfig.DEFAULTS:
+            desc = SystemConfig.DEFAULTS[key][1]
+        obj, created = SystemConfig.objects.update_or_create(
+            key=key, defaults={"value": value, "description": desc}
+        )
+        updated.append({"key": obj.key, "value": obj.value, "description": obj.description})
+    # Reset LLM client singleton so new config takes effect
+    try:
+        from api.llm_client import get_llm_client
+        import api.llm_client as _llm_mod
+        _llm_mod._default_client = None
+    except Exception:
+        pass
+    return Response({"updated": updated, "count": len(updated)})
+
