@@ -894,51 +894,75 @@ def _collect_downstream_tasks(parent_task, collected):
 @api_view(['GET'])
 def system_config_list(request):
     """Get all system configuration with defaults. Secret values are masked."""
-    all_config = SystemConfig.get_all()
+    from api.config_utils import ConfigManager
+
+    all_config = ConfigManager.get_all(include_secrets=False)
     result = []
     for key, info in all_config.items():
-        value = info["value"]
-        # Mask secret values: show only last 4 chars
-        is_secret = key in SystemConfig.SECRET_KEYS
-        if is_secret and value and len(value) > 4:
-            masked = "*" * (len(value) - 4) + value[-4:]
-        elif is_secret and value:
-            masked = "****"
-        else:
-            masked = value
         result.append({
             "key": key,
-            "value": masked,
+            "value": info["value"],
             "description": info.get("description", ""),
-            "is_secret": is_secret,
+            "is_secret": info.get("is_secret", False),
+            "source": info.get("source", "default"),
         })
     return Response(result)
 
 
 @api_view(['POST'])
 def system_config_update(request):
-    """Update one or more configuration values."""
+    """Update one or more configuration values. Persists to both DB and .env file."""
+    from api.config_utils import ConfigManager
+
     configs = request.data if isinstance(request.data, list) else [request.data]
     updated = []
+
     for item in configs:
         key = item.get("key")
         value = item.get("value", "")
         if not key:
             continue
+
+        # Get description if provided, otherwise use default
         desc = item.get("description", "")
-        # Look up default description if not provided
-        if not desc and key in SystemConfig.DEFAULTS:
-            desc = SystemConfig.DEFAULTS[key][1]
-        obj, created = SystemConfig.objects.update_or_create(
-            key=key, defaults={"value": value, "description": desc}
-        )
-        updated.append({"key": obj.key, "value": obj.value, "description": obj.description})
-    # Reset LLM client singleton so new config takes effect
-    try:
-        from api.llm_client import get_llm_client
-        import api.llm_client as _llm_mod
-        _llm_mod._default_client = None
-    except Exception:
-        pass
-    return Response({"updated": updated, "count": len(updated)})
+
+        # Update using ConfigManager (persists to both DB and .env)
+        success = ConfigManager.set(key, value, description=desc, persist_to_env=True)
+
+        if success:
+            updated.append({
+                "key": key,
+                "value": value,
+                "description": desc or ConfigManager.MODEL_CONFIG_KEYS.get(key, ("", ""))[1]
+            })
+
+    # Reset LLM client singleton so new config takes effect immediately
+    ConfigManager.reset_llm_client()
+
+    return Response({
+        "updated": updated,
+        "count": len(updated),
+        "persisted_to_env": True
+    })
+
+
+@api_view(['POST'])
+def system_config_sync_from_env(request):
+    """Sync all configuration from .env file to database."""
+    from api.config_utils import ConfigManager
+
+    results = ConfigManager.sync_from_env()
+
+    success_count = sum(1 for success in results.values() if success)
+    failed_count = len(results) - success_count
+
+    # Reset LLM client singleton
+    ConfigManager.reset_llm_client()
+
+    return Response({
+        "synced": results,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "total": len(results)
+    })
 

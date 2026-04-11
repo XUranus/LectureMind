@@ -431,15 +431,13 @@ _default_client: Optional[LLMClient] = None
 
 
 def _get_config(key: str, default: str = "") -> str:
-    """Try reading from SystemConfig, fall back to env/default."""
+    """Try reading from ConfigManager, fall back to env/default."""
     try:
-        from api.models import SystemConfig
-        val = SystemConfig.get(key)
-        if val:
-            return val
+        from api.config_utils import ConfigManager
+        return ConfigManager.get(key, default)
     except Exception:
-        pass
-    return default
+        # Fallback to environment variable
+        return os.environ.get(key, default)
 
 
 def get_llm_client(**kwargs) -> LLMClient:
@@ -448,14 +446,19 @@ def get_llm_client(**kwargs) -> LLMClient:
 
     If called with no arguments, returns (or creates) a shared default client.
     If called with arguments, always creates a new client.
-    Overrides from SystemConfig take priority when creating a fresh client.
+    Overrides from ConfigManager take priority when creating a fresh client.
+
+    Configuration priority (highest to lowest):
+    1. Explicitly passed kwargs
+    2. ConfigManager (DB -> .env -> env vars -> defaults)
+    3. Default values
     """
     global _default_client
     if kwargs:
-        # Apply SystemConfig overrides for model if not explicitly set
+        # Apply ConfigManager overrides for model if not explicitly set
         if "model" in kwargs:
             model_val = kwargs["model"]
-            # Map well-known keys to SystemConfig
+            # Map well-known keys to ConfigManager keys
             config_key_map = {
                 "qwen3-max": "chat_model",
                 "qwen2.5-vl-72b-instruct": "vl_model",
@@ -467,9 +470,9 @@ def get_llm_client(**kwargs) -> LLMClient:
                     kwargs["model"] = configured_model
         return LLMClient(**kwargs)
     if _default_client is None:
-        # Apply SystemConfig overrides for default task pipeline model
-        model = _get_config("llm_model") or os.environ.get("LLM_MODEL", DEFAULT_MODEL)
-        api_base = _get_config("llm_api_base") or os.environ.get("LLM_API_BASE", DEFAULT_API_BASE)
-        api_key = _get_config("dashscope_api_key") or os.environ.get("DASHSCOPE_API_KEY", "")
+        # Apply ConfigManager overrides for default task pipeline model
+        model = _get_config("llm_model") or DEFAULT_MODEL
+        api_base = _get_config("llm_api_base") or DEFAULT_API_BASE
+        api_key = _get_config("dashscope_api_key") or ""
         _default_client = LLMClient(model=model, api_base=api_base, api_key=api_key)
     return _default_client

@@ -55,6 +55,7 @@ urlpatterns = [
     # System Configuration
     path('config/', views.system_config_list, name='config-list'),
     path('config/update/', views.system_config_update, name='config-update'),
+    path('config/sync-from-env/', views.system_config_sync_from_env, name='config-sync-from-env'),
 ]
 
 if settings.DEBUG:
