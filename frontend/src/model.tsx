@@ -3,6 +3,7 @@
 export interface Video {
   id: string;
   cover: string;
+  cover_url: string | null;
   title: string;
   video_url: string;
   duration: number;

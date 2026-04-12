@@ -112,7 +112,7 @@ const VideoDashboard: React.FC = () => {
             <div key={video.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
               <div className="relative pb-[56.25%]">
                 <img
-                  src={video.cover.length === 0 ? DEFAULT_COVER : video.cover}
+                  src={video.cover_url ?? DEFAULT_COVER}
                   alt={video.title}
                   className="absolute inset-0 w-full h-full object-cover cursor-pointer"
                   onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_COVER; }}

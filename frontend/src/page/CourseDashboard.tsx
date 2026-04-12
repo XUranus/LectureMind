@@ -218,7 +218,7 @@ const CourseCard: React.FC<{
                 onClick={() => navigate(`/lecture/${video.id}`)}
               >
                 <img
-                  src={video.cover.length === 0 ? DEFAULT_COVER : video.cover}
+                  src={video.cover_url ?? DEFAULT_COVER}
                   alt={video.title}
                   className="w-full h-full object-cover rounded border border-gray-200"
                 />

@@ -86,7 +86,7 @@ const CourseDetailPage: React.FC = () => {
               >
                 <div className="w-20 h-14 flex-shrink-0 rounded overflow-hidden bg-gray-200">
                   <img
-                    src={video.cover.length === 0 ? DEFAULT_COVER : video.cover}
+                    src={video.cover_url ?? DEFAULT_COVER}
                     alt={video.title}
                     className="w-full h-full object-cover"
                   />

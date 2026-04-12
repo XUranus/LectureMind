@@ -37,14 +37,19 @@ class SlideOCRSerializer(serializers.ModelSerializer):
 class VideoSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     video_url = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
     class Meta:
         model = Video
-        fields = ['id', 'cover', 'title', 'video_url', 'duration']
-        read_only_fields = ['id', 'cover', 'video_url', 'duration']
+        fields = ['id', 'cover', 'cover_url', 'title', 'video_url', 'duration']
+        read_only_fields = ['id', 'cover', 'cover_url', 'video_url', 'duration']
     def get_video_url(self, obj):
         if not obj.file: return None
         req = self.context.get('request')
         return req.build_absolute_uri(obj.file.url) if req else obj.file.url
+    def get_cover_url(self, obj):
+        if not obj.cover: return None
+        req = self.context.get('request')
+        return req.build_absolute_uri(obj.cover) if req else obj.cover
 
 
 class VideoUploadSerializer(serializers.ModelSerializer):
