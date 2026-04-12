@@ -18,10 +18,19 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger('LectureMind')
 
-# Default configuration
+# Default configuration (overridden by Django settings / env var CHROMA_PERSIST_DIR)
 DEFAULT_PERSIST_DIR = "./media/chromadb"
 DEFAULT_COLLECTION_NAME = "lecture_knowledge"
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+
+def _default_chroma_dir() -> str:
+    """Return ChromaDB persist dir from Django settings if available, else env/fallback."""
+    try:
+        from django.conf import settings
+        return getattr(settings, 'CHROMA_PERSIST_DIR', '') or DEFAULT_PERSIST_DIR
+    except Exception:
+        return os.environ.get('CHROMA_PERSIST_DIR', DEFAULT_PERSIST_DIR)
 
 
 class VectorStore:
@@ -38,9 +47,7 @@ class VectorStore:
         collection_name: Optional[str] = None,
         embedding_model: Optional[str] = None,
     ):
-        self.persist_dir = persist_dir or os.environ.get(
-            "CHROMA_PERSIST_DIR", DEFAULT_PERSIST_DIR
-        )
+        self.persist_dir = persist_dir or _default_chroma_dir()
         self.collection_name = collection_name or DEFAULT_COLLECTION_NAME
         self.embedding_model_name = embedding_model or DEFAULT_EMBEDDING_MODEL
 

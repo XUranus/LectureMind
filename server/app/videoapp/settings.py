@@ -43,12 +43,13 @@ _load_dotenv(BASE_DIR)
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-0037%n_gby*ph4b7o(iaw)g!wbk5+-=b_y&p+d^dhhb7a0lvo_'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-0037%n_gby*ph4b7o(iaw)g!wbk5+-=b_y&p+d^dhhb7a0lvo_')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True').lower() not in ('false', '0', 'no')
 
-ALLOWED_HOSTS = []
+_allowed = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()]
 
 
 # Application definition
@@ -99,10 +100,11 @@ WSGI_APPLICATION = 'videoapp.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+_db_path = os.environ.get('DB_PATH', '')
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': Path(_db_path) if _db_path else BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -151,19 +153,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Media files (for uploads)
 import os
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+_media_root = os.environ.get('MEDIA_ROOT', '')
+MEDIA_ROOT = _media_root if _media_root else os.path.join(BASE_DIR, 'media')
 
 # Allow frontend origin (if React runs on http://localhost:8080)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
+_cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Unified logging — both web server and task worker write to the same log directory
 import os as _os
-LOG_DIR = _os.path.join(BASE_DIR, 'logs')
+LOG_DIR = _os.environ.get('LOG_DIR', '') or _os.path.join(BASE_DIR, 'logs')
 _os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING = {
@@ -224,3 +226,21 @@ LOGGING = {
         },
     },
 }
+
+# ── Media sub-directories ────────────────────────────────────────────────────
+# Resolved as absolute paths under MEDIA_ROOT unless an absolute path is given.
+def _media_subdir(env_var: str, default: str) -> str:
+    val = _os.environ.get(env_var, default)
+    if _os.path.isabs(val):
+        return val
+    return _os.path.join(MEDIA_ROOT, val)
+
+MEDIA_AUDIO_DIR      = _media_subdir('MEDIA_AUDIO_DIR',      'audio')
+MEDIA_STREAMS_DIR    = _media_subdir('MEDIA_STREAMS_DIR',    'streams')
+MEDIA_THUMBNAILS_DIR = _media_subdir('MEDIA_THUMBNAILS_DIR', 'thumbnails')
+
+# ChromaDB persistent directory
+CHROMA_PERSIST_DIR = _os.environ.get('CHROMA_PERSIST_DIR', '') or _os.path.join(MEDIA_ROOT, 'chromadb')
+
+# Backend port used by `manage.py runserver` via the run_server management helper
+BACKEND_PORT = int(_os.environ.get('BACKEND_PORT', 8000))

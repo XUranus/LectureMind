@@ -349,7 +349,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
         raise FileNotFoundError(f"Video file not found: {video_file}")
 
     # --- Extract audio using ffmpeg (robust, no pydub dependency) ---
-    wav_file = os.path.join(settings.MEDIA_ROOT, "audio", f"{video_id}.wav")
+    wav_file = os.path.join(settings.MEDIA_AUDIO_DIR, f"{video_id}.wav")
     os.makedirs(os.path.dirname(wav_file), exist_ok=True)
     _report_progress(video_id, "task_extract_audio_and_transcript", 10)
 
@@ -433,9 +433,9 @@ def task_hls_streaming(input_data: Dict[str, Any]) -> Dict[str, Any]:
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
     _report_progress(video_id, "task_hls_streaming", 10)
-    generate_hls_renditions(input_video_path=video_file, video_id=video_id, output_root="./media/streams")
+    generate_hls_renditions(input_video_path=video_file, video_id=video_id, output_root=settings.MEDIA_STREAMS_DIR)
     _report_progress(video_id, "task_hls_streaming", 80)
-    path = generate_master_playlist(video_id=video_id, output_root="./media/streams", output_filename="master-stream.m3u8")
+    path = generate_master_playlist(video_id=video_id, output_root=settings.MEDIA_STREAMS_DIR, output_filename="master-stream.m3u8")
     _report_progress(video_id, "task_hls_streaming", 100)
     return {"video_id": video_id, "master_m3u8_path": path}
 
@@ -476,7 +476,7 @@ def task_generate_thumbnails(input_data: Dict[str, Any]) -> Dict[str, Any]:
     for i in range(0, total_frames, batch_size):
         batch_frames = frames[i:i + batch_size]
         batch_thumbs = generate_thumbnails_for_video(
-            video_file=video_file, time_seconds=batch_frames, width=200, output_dir="./media/thumbnails"
+            video_file=video_file, time_seconds=batch_frames, width=200, output_dir=settings.MEDIA_THUMBNAILS_DIR
         )
         thumbnails.extend(batch_thumbs)
         progress_pct = min(90, int((len(thumbnails) / total_frames) * 100))
