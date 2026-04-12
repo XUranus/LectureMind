@@ -46,9 +46,16 @@ AGENT_SYSTEM_PROMPT = """You are an expert teaching assistant for a video lectur
 - For specific timestamp questions, use `get_transcript_at_time`
 - For deep-dive into a section, use `get_section_details`
 - You may call multiple tools if needed for a thorough answer
-- When citing lecture content, mention the time range (e.g., "at 05:30-08:15")
+- When citing lecture content, ONLY mention time ranges that appear in the tool results
+- NEVER fabricate section names, timestamps, or specific examples that aren't in the retrieved content
+- If the retrieved content doesn't contain specific timestamps, do not invent them
 - Use markdown formatting for clarity
-- Be educational, patient, and thorough"""
+- Be educational, patient, and thorough
+
+## Citation Guidelines:
+- Only cite specific timestamps [MM:SS] if they appear in the tool results
+- If no specific timestamps are available, provide a general answer without fabricated citations
+- Do not make up section titles or lecture structure details"""
 
 
 class AgentRunner:
@@ -94,9 +101,11 @@ class AgentRunner:
             response = self._call_with_tools(llm, messages, tools)
 
             if response["type"] == "text":
-                # LLM produced final answer
+                # LLM produced final answer - sanitize for hallucinations
+                raw_answer = response["content"]
+                sanitized_answer = self._sanitize_answer(raw_answer, tool_steps)
                 citations = self._extract_citations_from_steps(tool_steps)
-                return response["content"], tool_steps, citations
+                return sanitized_answer, tool_steps, citations
 
             elif response["type"] == "tool_calls":
                 # Process each tool call
@@ -132,8 +141,10 @@ class AgentRunner:
             "content": "Please provide your final answer based on all the information gathered so far."
         })
         response = self._call_with_tools(llm, messages, [])  # no tools, force text response
+        raw_answer = response.get("content", "I was unable to find a complete answer.")
+        sanitized_answer = self._sanitize_answer(raw_answer, tool_steps)
         citations = self._extract_citations_from_steps(tool_steps)
-        return response.get("content", "I was unable to find a complete answer."), tool_steps, citations
+        return sanitized_answer, tool_steps, citations
 
     def run_stream(
         self, question: str
@@ -351,6 +362,57 @@ class AgentRunner:
                         })
 
         return citations
+
+    def _sanitize_answer(self, answer: str, tool_steps: List[Dict[str, Any]]) -> str:
+        """
+        Sanitize the answer to remove hallucinated citations.
+        Only keeps citations that match actual tool results.
+        """
+        import re
+
+        # Extract all valid time ranges from tool results
+        valid_time_ranges = set()
+        for step in tool_steps:
+            result = step.get("result", "")
+            # Find all time ranges in tool results [MM:SS - MM:SS] or at MM:SS
+            time_pattern = r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})'
+            for match in re.finditer(time_pattern, result):
+                valid_time_ranges.add(match.group(0))
+
+        # Check for potential hallucinated citations
+        # Pattern: "at MM:SS-MM:SS" or "[MM:SS - MM:SS]" or section references
+        citation_patterns = [
+            r'at\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}',
+            r'\[\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\]',
+            r'\(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\)',
+        ]
+
+        sanitized = answer
+        hallucination_indicators = []
+
+        for pattern in citation_patterns:
+            for match in re.finditer(pattern, answer):
+                citation = match.group(0)
+                # Check if this citation exists in valid results
+                is_valid = any(
+                    range_str in citation or citation in range_str
+                    for range_str in valid_time_ranges
+                )
+                if not is_valid:
+                    hallucination_indicators.append(citation)
+
+        # If we found likely hallucinations, add a note and remove specific timestamps
+        if hallucination_indicators:
+            logger.warning(f"Potential hallucinated citations detected: {hallucination_indicators}")
+            # Remove specific timestamp citations that don't match tool results
+            for citation in hallucination_indicators:
+                sanitized = sanitized.replace(citation, "")
+            # Clean up any double spaces or empty parentheses left behind
+            sanitized = re.sub(r'\s+', ' ', sanitized)
+            sanitized = re.sub(r'\(\s*\)', '', sanitized)
+            sanitized = re.sub(r'\[\s*\]', '', sanitized)
+
+        return sanitized.strip()
 
 
 def run_agent(

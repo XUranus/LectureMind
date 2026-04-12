@@ -28,11 +28,12 @@ logger = logging.getLogger('LectureMind')
 RAG_SYSTEM_PROMPT = """You are a knowledgeable teaching assistant for a video lecture. Answer the student's question based on the lecture content provided below.
 
 Instructions:
-- Answer ONLY based on the provided context. If the context doesn't contain enough information, say so honestly.
+- Answer ONLY based on the provided context. If the context doesn't contain enough information, clearly state: "The lecture content does not provide specific information about this topic."
 - When referencing specific lecture content, cite the source using [Source N] notation matching the numbered sources below.
 - Be concise but thorough. Use markdown formatting for clarity.
 - If the question is about a specific concept, explain it as taught in this lecture.
-- Maintain an educational, helpful tone."""
+- Maintain an educational, helpful tone.
+- DO NOT make up information, examples, or timestamps that are not in the provided context."""
 
 RAG_CONTEXT_TEMPLATE = """## Lecture Context
 
@@ -65,6 +66,7 @@ class RAGEngine:
     def _retrieve_context(self, query: str) -> Tuple[List[Dict[str, Any]], str]:
         """
         Retrieve relevant documents from vector store and format as context string.
+        Implements adaptive retrieval with relevance filtering.
 
         Returns:
             (citations_list, formatted_sources_text)
@@ -72,14 +74,21 @@ class RAGEngine:
         from api.vector_store import get_vector_store
 
         store = get_vector_store()
+
+        # Try with higher top_k first, then filter
         results = store.query(
             query_text=query,
             video_id=self.video_id,
-            top_k=self.top_k,
+            top_k=self.top_k * 2,  # Retrieve more to allow better filtering
         )
 
         citations = []
         sources_lines = []
+
+        # Adaptive relevance threshold based on top result
+        max_relevance = max([r.get("relevance", 0) for r in results]) if results else 0
+        # Use dynamic threshold: at least 0.3 or 60% of max relevance
+        relevance_threshold = max(0.3, max_relevance * 0.6)
 
         for i, result in enumerate(results):
             meta = result.get("metadata", {})
@@ -91,12 +100,16 @@ class RAGEngine:
             content_type = meta.get("type", "unknown")
             relevance = result.get("relevance", 0)
 
-            # Only include reasonably relevant results
-            if relevance < 0.2:
+            # Only include high-quality relevant results
+            if relevance < relevance_threshold:
                 continue
 
+            # Limit to top_k results after filtering
+            if len(citations) >= self.top_k:
+                break
+
             time_range = f"{_format_time(begin_time)} - {_format_time(end_time)}"
-            text_preview = result.get("text", "")[:500]
+            text_preview = result.get("text", "")[:600]  # Slightly longer context
 
             sources_lines.append(
                 f"[Source {source_num}] ({content_type}) \"{title}\" "

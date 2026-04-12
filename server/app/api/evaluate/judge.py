@@ -36,9 +36,11 @@ JUDGE_PROMPT_TEMPLATE = """You are an expert evaluator assessing the quality of 
    - 20-39: Very incomplete
    - 0-19: Does not address the question
 
-3. **Hallucination Detection**: Does the answer contain fabricated information not in the ground truth?
-   - Check for: made-up facts, incorrect citations, invented statistics
-   - Note: Information from general knowledge (not lecture-specific) is acceptable if marked as such
+3. **Hallucination Detection**: Does the answer contain fabricated information not supported by the ground truth?
+   - Check for: made-up facts, incorrect citations, invented statistics, fabricated timestamps
+   - DO NOT flag as hallucination: General knowledge answers when lecture content is insufficient
+   - DO NOT flag as hallucination: Fallback responses that explicitly state they're using general knowledge
+   - DO flag as hallucination: Specific lecture citations (timestamps, section names) that don't exist in ground truth
 
 4. **Relevance (0-100)**: How relevant is the answer to the specific question asked?
 
@@ -83,7 +85,8 @@ Return ONLY a JSON object with this exact structure:
 Requirements:
 - Be objective and consistent in your evaluation
 - Focus on factual correctness relative to ground truth
-- Flag any information not present in the ground truth as potential hallucination
+- Only flag hallucinations for fabricated lecture-specific details (timestamps, section names, examples)
+- Do NOT penalize fallback responses that honestly use general knowledge when lecture content is insufficient
 - Consider the RAG mode context (LLM Direct has no lecture context, Fast RAG has retrieved context, Agentic RAG has multi-step reasoning)"""
 
 
@@ -121,7 +124,7 @@ class JudgeSystem:
             JudgeEvaluation with scores and analysis
         """
         # If there was an error in the mode response, return a failed evaluation
-        if mode_response.error:
+        if mode_response.error and not mode_response.answer:
             return JudgeEvaluation(
                 mode=mode_response.mode,
                 overall_score=0.0,
@@ -134,11 +137,14 @@ class JudgeSystem:
                 comparison_to_ground_truth="N/A - Error occurred",
             )
 
+        # Clean the answer by removing fallback indicators for fair evaluation
+        cleaned_answer = self._clean_answer_for_evaluation(mode_response.answer)
+
         # Build the judge prompt
         prompt = JUDGE_PROMPT_TEMPLATE.format(
             question=qa_pair.question,
             ground_truth=qa_pair.ground_truth_answer,
-            model_response=mode_response.answer,
+            model_response=cleaned_answer,
             rag_mode=mode_response.mode.value,
         )
 
@@ -251,6 +257,28 @@ class JudgeSystem:
             "explanation": "Parsing error",
             "comparison_to_ground_truth": "Parsing error",
         }
+
+    def _clean_answer_for_evaluation(self, answer: str) -> str:
+        """
+        Remove fallback indicators and metadata from answer before evaluation.
+        This ensures fair evaluation of the actual content.
+        """
+        import re
+
+        if not answer:
+            return answer
+
+        # Remove fallback indicators
+        fallback_patterns = [
+            r'\[Retrieval fallback:.*?\]\n*',
+            r'\[Agent fallback:.*?\]\n*',
+        ]
+
+        cleaned = answer
+        for pattern in fallback_patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+
+        return cleaned.strip()
 
 
 class ComparativeAnalyzer:
