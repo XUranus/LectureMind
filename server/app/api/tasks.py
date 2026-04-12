@@ -173,8 +173,12 @@ def update_thumbnails_for_video(video_id: str, thumbnail_data: list[dict]):
     video = Video.objects.get(id=uuid.UUID(video_id))
     old_thumbs = Thumbnail.objects.filter(video=video)
     for t in old_thumbs:
+        # Delete low-res image
         if t.image and os.path.isfile(t.image.path):
             os.remove(t.image.path)
+        # Delete high-res image if exists
+        if t.image_high_res and os.path.isfile(t.image_high_res.path):
+            os.remove(t.image_high_res.path)
     old_thumbs.delete()
     count = 0
     for item in thumbnail_data:
@@ -183,8 +187,14 @@ def update_thumbnails_for_video(video_id: str, thumbnail_data: list[dict]):
                 id=uuid.UUID(item['image_id']), video=video,
                 time_second=float(item['time_second'])
             )
+            # Save low-res image (for web display)
             with open(item['image'], 'rb') as f:
                 thumb.image.save(os.path.basename(item['image']), File(f), save=True)
+            # Save high-res image (for OCR) if available
+            if item.get('image_high_res') and os.path.isfile(item['image_high_res']):
+                with open(item['image_high_res'], 'rb') as f:
+                    thumb.image_high_res.save(os.path.basename(item['image_high_res']), File(f), save=True)
+            thumb.save()
             count += 1
         except Exception as e:
             logger.warning(f"Skipping thumbnail: {e}")
@@ -850,7 +860,14 @@ def task_slides_ocr(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # construct the Django media URL. Since DashScope is a remote API, we need
         # to encode the image as a base64 data URI.
         try:
-            image_path = thumb.image.path
+            # Use high-res image for OCR if available, otherwise fall back to low-res
+            if thumb.image_high_res and os.path.isfile(thumb.image_high_res.path):
+                image_path = thumb.image_high_res.path
+                logger.debug(f"[Slides OCR] Using high-res image for slide @ {thumb.time_second}s")
+            else:
+                image_path = thumb.image.path
+                logger.debug(f"[Slides OCR] Using low-res image for slide @ {thumb.time_second}s (high-res not available)")
+            
             if not os.path.isfile(image_path):
                 logger.warning(f"[Slides OCR] Image file not found: {image_path}")
                 skipped += 1

@@ -164,7 +164,19 @@ class Command(BaseCommand):
         )
 
     def _process_single_task(self, task_id: str) -> None:
-        """Atomically process a single task."""
+        """
+        Process a single task using three separate transactions so that the
+        'running' status and incremental progress updates are immediately
+        visible to other readers (e.g. the REST API).
+
+        Phase 1 (atomic): Claim the task — pending → running. Commits right
+                          away so the API can see 'running' immediately.
+        Phase 2 (no tx):  Execute the task function. _report_progress() does
+                          plain UPDATE calls that commit on their own, so the
+                          frontend sees live progress percentages.
+        Phase 3 (atomic): Finalise — running → done/error.
+        """
+        # ── Phase 1: Claim the task ──────────────────────────────────────────
         try:
             with transaction.atomic():
                 task = AsyncTaskItem.objects.select_for_update(skip_locked=True).get(id=task_id)
@@ -175,35 +187,55 @@ class Command(BaseCommand):
                 if not self._is_task_ready(task_id):
                     return
 
+                input_data = self._get_task_input(task)
+                func = get_task_function(task.func_name)
+
                 task.status = 'running'
                 task.progress = 0
                 task.save(update_fields=['status', 'progress'])
                 logger.info(f"STARTED task {task.id} | Func: {task.func_name} | Video: {task.video_id}")
-
-                input_data = self._get_task_input(task)
-                func = get_task_function(task.func_name)
-                start_time = time.time()
-                result_data = func(input_data)
-                duration = time.time() - start_time
-
-                if not isinstance(result_data, dict):
-                    raise TypeError(f"Task function must return dict, got {type(result_data)}")
-
-                task.result = json.dumps(result_data)
-                task.status = 'done'
-                task.progress = 100
-                task.finished_at = timezone.now()
-                task.save(update_fields=['result', 'status', 'progress', 'finished_at'])
-
-                logger.info(
-                    f"COMPLETED task {task.id} | Func: {task.func_name} | "
-                    f"Duration: {duration:.2f}s | Video: {task.video_id}"
-                )
+                # Transaction commits here — 'running' is now visible externally.
 
         except AsyncTaskItem.DoesNotExist:
             return
         except Exception as e:
             self._handle_task_error(task_id, e, traceback.format_exc())
+            return
+
+        # ── Phase 2: Execute the task (outside any transaction) ─────────────
+        result_data = None
+        exec_error = None
+        exec_tb = None
+        start_time = time.time()
+        try:
+            result_data = func(input_data)
+            duration = time.time() - start_time
+
+            if not isinstance(result_data, dict):
+                raise TypeError(f"Task function must return dict, got {type(result_data)}")
+
+            logger.info(
+                f"COMPLETED task {task_id} | Func: {task.func_name} | "
+                f"Duration: {duration:.2f}s | Video: {task.video_id}"
+            )
+        except Exception as e:
+            exec_error = e
+            exec_tb = traceback.format_exc()
+
+        # ── Phase 3: Finalise ────────────────────────────────────────────────
+        if exec_error is not None:
+            self._handle_task_error(task_id, exec_error, exec_tb)
+        else:
+            try:
+                with transaction.atomic():
+                    task = AsyncTaskItem.objects.select_for_update().get(id=task_id)
+                    task.result = json.dumps(result_data)
+                    task.status = 'done'
+                    task.progress = 100
+                    task.finished_at = timezone.now()
+                    task.save(update_fields=['result', 'status', 'progress', 'finished_at'])
+            except Exception as e:
+                logger.critical(f"CRITICAL: Could not finalise task {task_id}: {e}")
 
     def _get_task_input(self, task: AsyncTaskItem) -> dict:
         """Resolve input: previous task result (if exists) else task.param."""

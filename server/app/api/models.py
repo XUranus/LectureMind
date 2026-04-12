@@ -47,7 +47,13 @@ class Thumbnail(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='thumbnails')
     time_second = models.FloatField(help_text="Timestamp in seconds where thumbnail was captured.")
-    image = models.ImageField(upload_to='thumbnails/')
+    image = models.ImageField(upload_to='thumbnails/', help_text="Low-resolution thumbnail for web display.")
+    image_high_res = models.ImageField(
+        upload_to='thumbnails/high_res/',
+        null=True,
+        blank=True,
+        help_text="High-resolution thumbnail for OCR tasks."
+    )
 
     def __str__(self) -> str:
         return f"{self.video.title} @ {self.time_second}s"

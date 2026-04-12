@@ -32,22 +32,26 @@ def generate_thumbnails_for_video(
     video_file: str,
     time_seconds: List[Union[int, float]],
     width: int,
-    output_dir: str
+    output_dir: str,
+    high_res_width: int = 1920,
 ) -> List[Dict[str, Union[str, float]]]:
     """
     Generate thumbnails from a video at specified timestamps, resized to target width.
+    Generates both low-res (for web display) and high-res (for OCR) versions.
     
     Args:
         video_file: Path to source video file
         time_seconds: List of timestamps (in seconds) to extract frames
-        width: Target width for resized thumbnails (height scaled proportionally)
+        width: Target width for resized thumbnails (height scaled proportionally) - web version
         output_dir: Directory to save thumbnail images
+        high_res_width: Target width for high-resolution thumbnails - OCR version (default: 1920)
     
     Returns:
         List of dicts containing:
             - image_id: UUID string used as filename (without extension)
             - time_second: Original timestamp (float)
-            - image: Absolute path to saved thumbnail file
+            - image: Absolute path to saved thumbnail file (low-res)
+            - image_high_res: Absolute path to saved high-res thumbnail file
     
     Raises:
         FileNotFoundError: If video_file doesn't exist or FFmpeg/Pillow not installed
@@ -68,8 +72,10 @@ def generate_thumbnails_for_video(
     if width <= 0:
         raise ValueError(f"Width must be positive (got {width})")
     
-    # Create output directory
+    # Create output directories
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+    high_res_dir = os.path.join(output_dir, "high_res")
+    Path(high_res_dir).mkdir(parents=True, exist_ok=True)
     
     results = []
     
@@ -78,16 +84,16 @@ def generate_thumbnails_for_video(
         image_id = str(uuid.uuid4())
         temp_path = os.path.join(output_dir, f"{image_id}_temp.jpg")
         final_path = os.path.join(output_dir, f"{image_id}.jpg")
+        high_res_path = os.path.join(high_res_dir, f"{image_id}.jpg")
         
         try:
-            # Extract frame at precise timestamp using FFmpeg
+            # Extract frame at FULL resolution using FFmpeg
             # -ss before -i enables accurate seeking (frame-accurate)
             cmd = [
                 "ffmpeg",
                 "-ss", str(ts),          # Seek to timestamp first (accurate)
                 "-i", video_file,
                 "-vframes", "1",         # Extract single frame
-                "-vf", "scale='min(iw,1920)':-2",  # Optional: limit source resolution for speed
                 "-q:v", "2",             # High quality JPEG (1-31, lower = better)
                 "-y",                    # Overwrite existing files
                 temp_path
@@ -106,16 +112,27 @@ def generate_thumbnails_for_video(
                 print(f"Warning: Failed to extract frame at {ts}s: {result.stderr[:200]}")
                 continue
             
-            # Resize while maintaining aspect ratio using Pillow
+            # Open the full-resolution extracted frame
             with Image.open(temp_path) as img:
-                # Calculate proportional height
-                ratio = width / img.width
-                height = int(img.height * ratio)
+                # Ensure RGB for JPEG compatibility
+                img_rgb = img.convert("RGB")
                 
-                # Resize with high-quality Lanczos filter
-                resized = img.resize((width, height), Image.Resampling.LANCZOS)
-                resized = resized.convert("RGB")  # Ensure JPEG compatibility
-                resized.save(final_path, "JPEG", quality=95, optimize=True)
+                # Generate HIGH-RES version for OCR (preserve quality)
+                if img_rgb.width > high_res_width:
+                    # Downscale only if larger than target
+                    ratio = high_res_width / img_rgb.width
+                    high_res_height = int(img_rgb.height * ratio)
+                    high_res_img = img_rgb.resize((high_res_width, high_res_height), Image.Resampling.LANCZOS)
+                else:
+                    # Keep original if smaller than target
+                    high_res_img = img_rgb
+                high_res_img.save(high_res_path, "JPEG", quality=95, optimize=True)
+                
+                # Generate LOW-RES version for web display
+                ratio = width / img_rgb.width
+                height = int(img_rgb.height * ratio)
+                low_res_img = img_rgb.resize((width, height), Image.Resampling.LANCZOS)
+                low_res_img.save(final_path, "JPEG", quality=85, optimize=True)
             
             # Clean up temp file
             os.remove(temp_path)
@@ -124,12 +141,13 @@ def generate_thumbnails_for_video(
             results.append({
                 "image_id": image_id,
                 "time_second": float(ts),
-                "image": final_path
+                "image": final_path,
+                "image_high_res": high_res_path,
             })
             
         except Exception as e:
             # Clean up temp files on error
-            for p in (temp_path, final_path):
+            for p in (temp_path, final_path, high_res_path):
                 if os.path.exists(p):
                     os.remove(p)
             print(f"Warning: Error processing timestamp {ts}s: {e}")
