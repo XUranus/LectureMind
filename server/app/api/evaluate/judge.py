@@ -41,6 +41,7 @@ JUDGE_PROMPT_TEMPLATE = """You are an expert evaluator assessing the quality of 
    - DO NOT flag as hallucination: General knowledge answers when lecture content is insufficient
    - DO NOT flag as hallucination: Fallback responses that explicitly state they're using general knowledge
    - DO flag as hallucination: Specific lecture citations (timestamps, section names) that don't exist in ground truth
+   - SPECIAL CASE: If ground truth starts with "INSUFFICIENT_INFO", the question is NOT answerable from KB. If the model provides a specific answer instead of admitting it doesn't know, FLAG THIS AS HALLUCINATION.
 
 4. **Relevance (0-100)**: How relevant is the answer to the specific question asked?
 

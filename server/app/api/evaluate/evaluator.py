@@ -51,6 +51,8 @@ class RAGEvaluator:
         max_workers: int = 3,
         parallel_questions: bool = False,
         question_workers: int = 4,
+        include_irrelevant_questions: bool = True,
+        irrelevant_ratio: float = 0.3,
     ):
         """
         Initialize the RAG evaluator.
@@ -62,6 +64,8 @@ class RAGEvaluator:
             max_workers: Max threads for running RAG modes concurrently per question
             parallel_questions: Whether to process questions in parallel
             question_workers: Max threads for parallel question processing
+            include_irrelevant_questions: Whether to include questions not answerable from KB
+            irrelevant_ratio: Ratio of irrelevant questions (default 0.3 = 30%)
         """
         self.video_id = video_id
         self.sota_model = sota_model
@@ -69,6 +73,8 @@ class RAGEvaluator:
         self.max_workers = max_workers
         self.parallel_questions = parallel_questions
         self.question_workers = question_workers
+        self.include_irrelevant_questions = include_irrelevant_questions
+        self.irrelevant_ratio = irrelevant_ratio
 
         # Initialize components
         self.dataset_generator = DatasetGenerator(sota_model=sota_model)
@@ -85,7 +91,8 @@ class RAGEvaluator:
         logger.info(
             f"Initialized RAGEvaluator for video '{self.video_title}' "
             f"(SOTA: {sota_model}, Test: {test_model}, "
-            f"Mode Workers: {max_workers}, Parallel Questions: {parallel_questions})"
+            f"Mode Workers: {max_workers}, Parallel Questions: {parallel_questions}, "
+            f"Irrelevant Questions: {include_irrelevant_questions} @ {irrelevant_ratio:.0%})"
         )
 
     def run_evaluation(
@@ -129,7 +136,22 @@ class RAGEvaluator:
                 qa_pairs = self.dataset_generator.generate_dataset(
                     video_id=self.video_id,
                     num_questions=num_questions,
+                    include_irrelevant=self.include_irrelevant_questions,
+                    irrelevant_ratio=self.irrelevant_ratio,
                 )
+            elif len(qa_pairs) < num_questions:
+                # Generate additional questions to reach the desired total
+                additional_needed = num_questions - len(qa_pairs)
+                logger.info(f"Generating {additional_needed} additional questions to reach {num_questions} total...")
+                additional_qa_pairs = self.dataset_generator.generate_dataset(
+                    video_id=self.video_id,
+                    num_questions=additional_needed,
+                    include_irrelevant=self.include_irrelevant_questions,
+                    irrelevant_ratio=self.irrelevant_ratio,
+                )
+                if additional_qa_pairs:
+                    qa_pairs = qa_pairs + additional_qa_pairs
+                    logger.info(f"Combined {len(qa_pairs)} total questions ({len(qa_pairs) - len(additional_qa_pairs)} custom + {len(additional_qa_pairs)} generated)")
 
             if not qa_pairs:
                 raise ValueError("No Q&A pairs generated or provided")

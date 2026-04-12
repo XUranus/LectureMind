@@ -83,6 +83,8 @@ class DatasetGenerator:
         self,
         video_id: str,
         num_questions: int = 20,
+        include_irrelevant: bool = True,
+        irrelevant_ratio: float = 0.3,
     ) -> List[QuestionAnswerPair]:
         """
         Generate a dataset of question-answer pairs for a video.
@@ -90,6 +92,8 @@ class DatasetGenerator:
         Args:
             video_id: UUID of the video to generate questions for
             num_questions: Number of Q&A pairs to generate (default 20)
+            include_irrelevant: Whether to include questions not answerable from KB (for hallucination detection)
+            irrelevant_ratio: Ratio of irrelevant questions (default 0.3 = 30%)
 
         Returns:
             List of QuestionAnswerPair objects
@@ -106,7 +110,39 @@ class DatasetGenerator:
         # Format ground truth for the prompt
         ground_truth_text = self._format_ground_truth(ground_truth)
 
-        # Generate Q&A pairs using SOTA model
+        # Calculate question distribution
+        if include_irrelevant and num_questions >= 5:
+            num_relevant = int(num_questions * (1 - irrelevant_ratio))
+            num_irrelevant = num_questions - num_relevant
+        else:
+            num_relevant = num_questions
+            num_irrelevant = 0
+
+        logger.info(f"Generating {num_relevant} relevant + {num_irrelevant} irrelevant questions")
+
+        qa_pairs = []
+
+        # Generate relevant questions
+        if num_relevant > 0:
+            relevant_pairs = self._generate_relevant_questions(
+                video_id, ground_truth_text, num_relevant
+            )
+            qa_pairs.extend(relevant_pairs)
+
+        # Generate irrelevant questions (for hallucination detection)
+        if num_irrelevant > 0:
+            irrelevant_pairs = self._generate_irrelevant_questions(
+                video_id, ground_truth_text, num_irrelevant
+            )
+            qa_pairs.extend(irrelevant_pairs)
+
+        logger.info(f"Generated {len(qa_pairs)} Q&A pairs ({num_relevant} relevant, {num_irrelevant} irrelevant) for video {video_id}")
+        return qa_pairs
+
+    def _generate_relevant_questions(
+        self, video_id: str, ground_truth_text: str, num_questions: int
+    ) -> List[QuestionAnswerPair]:
+        """Generate questions that are answerable from the knowledge base."""
         prompt = DATASET_GENERATION_PROMPT.format(
             ground_truth_content=ground_truth_text,
             num_questions=num_questions,
@@ -120,14 +156,12 @@ class DatasetGenerator:
                 max_tokens=4096,
             )
 
-            # Parse JSON response
             qa_data = self._parse_json_response(response)
 
             if not qa_data or "qa_pairs" not in qa_data:
                 logger.error("Failed to generate valid Q&A pairs from model response")
                 return []
 
-            # Convert to QuestionAnswerPair objects
             qa_pairs = []
             for item in qa_data["qa_pairs"]:
                 qa_pair = QuestionAnswerPair(
@@ -136,15 +170,104 @@ class DatasetGenerator:
                     question_type=item.get("question_type", "factual"),
                     difficulty=item.get("difficulty", "medium"),
                     source_knowledge_ids=item.get("source_knowledge_ids", []),
-                    metadata=item.get("metadata", {}),
+                    metadata={**item.get("metadata", {}), "is_relevant": True},
                 )
                 qa_pairs.append(qa_pair)
 
-            logger.info(f"Generated {len(qa_pairs)} Q&A pairs for video {video_id}")
             return qa_pairs
 
         except Exception as e:
-            logger.exception(f"Error generating dataset: {e}")
+            logger.exception(f"Error generating relevant questions: {e}")
+            return []
+
+    def _generate_irrelevant_questions(
+        self, video_id: str, ground_truth_text: str, num_questions: int
+    ) -> List[QuestionAnswerPair]:
+        """Generate questions that are NOT answerable from the knowledge base (for hallucination detection)."""
+        IRRELEVANT_QUESTION_PROMPT = """You are an expert at creating evaluation questions for RAG systems.
+Your task is to generate questions that appear related to the lecture topic but CANNOT be answered from the provided knowledge base.
+These questions will be used to test whether AI systems hallucinate answers when they don't have sufficient information.
+
+## Ground Truth Knowledge Base:
+
+{ground_truth_content}
+
+## Instructions:
+
+Generate {num_questions} questions that:
+1. Sound like they could be about the lecture topic (plausible questions a student might ask)
+2. Are NOT answerable from the provided knowledge base (information is missing or not covered)
+3. Test whether AI systems will hallucinate/fabricate answers when they lack information
+4. Include a mix of: specific details not in KB, related but external topics, and questions requiring info from outside sources
+
+For each question, the ground_truth_answer should clearly state that the information is NOT available in the knowledge base.
+
+## Output Format:
+
+Return a JSON object with this exact structure:
+{{
+  "qa_pairs": [
+    {{
+      "question": "Question that cannot be answered from KB",
+      "ground_truth_answer": "INSUFFICIENT_INFO: The knowledge base does not contain information about [specific topic].",
+      "question_type": "irrelevant",
+      "difficulty": "medium",
+      "source_knowledge_ids": [],
+      "metadata": {{
+        "topic": "Topic the question appears to be about",
+        "reasoning_required": "Why this question cannot be answered from KB",
+        "is_relevant": false,
+        "is_hallucination_test": true
+      }}
+    }}
+  ]
+}}
+
+Requirements:
+- Questions should be plausible and related to the general domain
+- Answers must honestly state that information is not available
+- Do NOT include any information not present in the ground truth"""
+
+        prompt = IRRELEVANT_QUESTION_PROMPT.format(
+            ground_truth_content=ground_truth_text[:8000],  # Limit context
+            num_questions=num_questions,
+        )
+
+        try:
+            response = self.llm.chat(
+                prompt=prompt,
+                system_prompt="You are an expert at creating adversarial test questions for RAG evaluation. Generate questions that test hallucination detection.",
+                temperature=0.8,  # Higher temperature for more diverse questions
+                max_tokens=4096,
+            )
+
+            qa_data = self._parse_json_response(response)
+
+            if not qa_data or "qa_pairs" not in qa_data:
+                logger.error("Failed to generate valid irrelevant Q&A pairs from model response")
+                return []
+
+            qa_pairs = []
+            for item in qa_data["qa_pairs"]:
+                qa_pair = QuestionAnswerPair(
+                    question=item.get("question", ""),
+                    ground_truth_answer=item.get("ground_truth_answer", "INSUFFICIENT_INFO: Not available in knowledge base."),
+                    question_type="irrelevant",
+                    difficulty="medium",
+                    source_knowledge_ids=[],
+                    metadata={
+                        **item.get("metadata", {}),
+                        "is_relevant": False,
+                        "is_hallucination_test": True,
+                    },
+                )
+                qa_pairs.append(qa_pair)
+
+            logger.info(f"Generated {len(qa_pairs)} irrelevant questions for hallucination detection")
+            return qa_pairs
+
+        except Exception as e:
+            logger.exception(f"Error generating irrelevant questions: {e}")
             return []
 
     def _gather_ground_truth(self, video_id: str) -> Dict[str, Any]:
