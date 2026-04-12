@@ -199,6 +199,7 @@ def detect_slide_changes_multithreaded(
     resize_width: int = 640,
     sampling_fps: Optional[float] = None,
     num_workers: int = 4,
+    progress_callback: Optional[callable] = None,
 ) -> List[float]:
     """
     Detect slide change timestamps using multithreading for SSIM computation.
@@ -239,6 +240,7 @@ def detect_slide_changes_multithreaded(
         raise FileNotFoundError(f"Cannot open video file: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if fps <= 0:
         raise ValueError("Invalid video FPS detected.")
 
@@ -248,8 +250,12 @@ def detect_slide_changes_multithreaded(
             raise ValueError("sampling_fps must be positive if provided.")
         frame_step = max(1, int(round(fps / sampling_fps)))
 
+    # Calculate total frames to process for progress tracking
+    total_frames_to_process = total_frames // frame_step if total_frames > 0 else 0
+
     prev_gray: Optional[np.ndarray] = None
     frame_count: int = 0
+    processed_count: int = 0
     slide_change_timestamps: List[float] = []
     last_change_frame: int = -1
 
@@ -285,6 +291,13 @@ def detect_slide_changes_multithreaded(
 
             prev_gray = gray.copy()
             frame_count += 1
+            processed_count += 1
+
+            # Report progress every ~5% or every 50 frames
+            if progress_callback and total_frames_to_process > 0:
+                if processed_count % 50 == 0 or processed_count == 1:
+                    progress_pct = min(95, int((processed_count / total_frames_to_process) * 100))
+                    progress_callback(progress_pct)
 
             # Process completed SSIM tasks to avoid memory buildup
             # We process them as they complete to maintain responsiveness
@@ -326,6 +339,8 @@ def detect_slide_changes_multithreaded(
                 last_change_frame = comp_frame_index
 
     cap.release()
+    if progress_callback:
+        progress_callback(100)
 
     # Remove duplicates and sort
     return sorted(set(slide_change_timestamps))

@@ -333,6 +333,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
     logger.info(f"[ASR] Processing video_id={video_id}, file={video_file}")
+    _report_progress(video_id, "task_extract_audio_and_transcript", 5)
 
     if not os.path.isfile(video_file):
         raise FileNotFoundError(f"Video file not found: {video_file}")
@@ -340,6 +341,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
     # --- Extract audio using ffmpeg (robust, no pydub dependency) ---
     wav_file = os.path.join(settings.MEDIA_ROOT, "audio", f"{video_id}.wav")
     os.makedirs(os.path.dirname(wav_file), exist_ok=True)
+    _report_progress(video_id, "task_extract_audio_and_transcript", 10)
 
     # Check if video has an audio stream
     probe_cmd = [
@@ -363,6 +365,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
         wav_file,
     ]
     logger.info(f"[ASR] Extracting audio: {' '.join(extract_cmd)}")
+    _report_progress(video_id, "task_extract_audio_and_transcript", 20)
     result = subprocess.run(extract_cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         raise RuntimeError(f"FFmpeg audio extraction failed: {result.stderr[:500]}")
@@ -370,6 +373,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
     if not os.path.isfile(wav_file) or os.path.getsize(wav_file) == 0:
         raise RuntimeError(f"Audio extraction produced empty file: {wav_file}")
     logger.info(f"[ASR] Audio extracted: {wav_file} ({os.path.getsize(wav_file)} bytes)")
+    _report_progress(video_id, "task_extract_audio_and_transcript", 40)
 
     # --- Upload to Tencent COS ---
     from qcloud_cos import CosConfig, CosS3Client
@@ -392,12 +396,14 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
     client.upload_file(Bucket=cos_bucket, LocalFilePath=wav_file, Key=cos_key)
     signed_url = client.get_presigned_url(Method='GET', Bucket=cos_bucket, Key=cos_key, Expired=3600)
     logger.info(f"[ASR] COS upload complete, signed_url length={len(signed_url)}")
+    _report_progress(video_id, "task_extract_audio_and_transcript", 60)
 
     # --- ASR transcription via DashScope ---
     from api.models import SystemConfig as _SC
     asr_api_key = _SC.get('dashscope_api_key') or os.environ.get('DASHSCOPE_API_KEY', '')
     asr_client = DashScopeASRClient(region="beijing", api_key=asr_api_key or None)
     logger.info(f"[ASR] Submitting to DashScope ASR...")
+    _report_progress(video_id, "task_extract_audio_and_transcript", 70)
     transcript = asr_client.transcribe_audio(file_url=signed_url, language="en", timeout=600.0)
 
     # Log ASR result structure for debugging
@@ -406,6 +412,7 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
         f"transcripts={len(transcript.get('transcripts', []))}, "
         f"keys={list(transcript.keys())}"
     )
+    _report_progress(video_id, "task_extract_audio_and_transcript", 90)
 
     save_transcript(video_id, transcript)
     logger.info(f"[ASR] Transcript saved for video {video_id}")
@@ -415,17 +422,26 @@ def task_extract_audio_and_transcript(input_data: Dict[str, Any]) -> Dict[str, A
 def task_hls_streaming(input_data: Dict[str, Any]) -> Dict[str, Any]:
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
+    _report_progress(video_id, "task_hls_streaming", 10)
     generate_hls_renditions(input_video_path=video_file, video_id=video_id, output_root="./media/streams")
+    _report_progress(video_id, "task_hls_streaming", 80)
     path = generate_master_playlist(video_id=video_id, output_root="./media/streams", output_filename="master-stream.m3u8")
+    _report_progress(video_id, "task_hls_streaming", 100)
     return {"video_id": video_id, "master_m3u8_path": path}
 
 
 def task_ssim_move_detection(input_data: Dict[str, Any]) -> Dict[str, Any]:
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
+    _report_progress(video_id, "task_ssim_move_detection", 5)
+
+    def progress_callback(pct):
+        _report_progress(video_id, "task_ssim_move_detection", pct)
+
     changes = detect_slide_changes_multithreaded(
         video_path=video_file, ssim_threshold=0.7, min_interval_sec=5.0,
         resize_width=240, sampling_fps=10.0, num_workers=16,
+        progress_callback=progress_callback,
     )
     return {"video_id": video_id, "file": input_data['file'], "changes": changes}
 
@@ -433,11 +449,31 @@ def task_ssim_move_detection(input_data: Dict[str, Any]) -> Dict[str, Any]:
 def task_generate_thumbnails(input_data: Dict[str, Any]) -> Dict[str, Any]:
     video_id = input_data['video_id']
     video_file = get_local_file_path(input_data['file'])
-    frames = input_data.get('changes')
-    thumbnails = generate_thumbnails_for_video(
-        video_file=video_file, time_seconds=frames, width=200, output_dir="./media/thumbnails"
-    )
+    frames = input_data.get('changes', [])
+    _report_progress(video_id, "task_generate_thumbnails", 5)
+
+    # Process thumbnails with progress reporting
+    total_frames = len(frames) if frames else 0
+    if total_frames == 0:
+        return {"video_id": video_id, "file": input_data['file'],
+                "changes": [], "thumbnail_count": 0}
+
+    # Process in batches and report progress
+    from api.utils import generate_thumbnails_for_video
+    thumbnails = []
+    batch_size = max(1, total_frames // 10)  # Report ~10 times
+
+    for i in range(0, total_frames, batch_size):
+        batch_frames = frames[i:i + batch_size]
+        batch_thumbs = generate_thumbnails_for_video(
+            video_file=video_file, time_seconds=batch_frames, width=200, output_dir="./media/thumbnails"
+        )
+        thumbnails.extend(batch_thumbs)
+        progress_pct = min(90, int((len(thumbnails) / total_frames) * 100))
+        _report_progress(video_id, "task_generate_thumbnails", progress_pct)
+
     count = update_thumbnails_for_video(video_id, thumbnails)
+    _report_progress(video_id, "task_generate_thumbnails", 95)
 
     # Set first thumbnail as video cover
     first_thumb = Thumbnail.objects.filter(video_id=video_id).order_by('time_second').first()

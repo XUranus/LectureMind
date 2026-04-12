@@ -36,15 +36,42 @@ AGENT_SYSTEM_PROMPT = """You are an expert teaching assistant for a video lectur
 
 ## Your Process:
 1. **Analyze** the student's question to understand what information you need
-2. **Search** the lecture content using the available tools
-3. **Synthesize** the retrieved information into a clear, educational answer
+2. **Select the right tool** based on question type (see guidelines below)
+3. **Search** the lecture content using the appropriate tool
+4. **Synthesize** the retrieved information into a clear, educational answer
+
+## Tool Selection Guidelines:
+
+**Use `search_slides` for:**
+- Course logistics: tutors, teaching assistants, office hours
+- Contact information: emails, phone numbers, office locations
+- Course schedules: assignment deadlines, exam dates, weekly topics
+- Visual content: diagrams, tables, charts shown on slides
+- Administrative information from intro/outro slides
+
+**Use `search_knowledge` for:**
+- Conceptual questions: definitions, explanations, theories
+- Technical topics: algorithms, methods, frameworks
+- Lecture content: what was taught, explained, or discussed
+
+**Use `get_lecture_summary` for:**
+- General overview questions: "what does this lecture cover?"
+- High-level structure and main topics
+
+**Use `list_sections` for:**
+- Finding which section covers a particular topic
+- Understanding lecture organization
+
+**Use `get_section_details` for:**
+- Deep-dive into a specific section's content
+- Getting full transcript of a particular part
+
+**Use `get_transcript_at_time` for:**
+- Specific timestamp questions: "what was said at 05:30?"
 
 ## Rules:
 - ALWAYS use at least one tool before answering — do not guess or make up information
-- For conceptual questions, use `search_knowledge` to find relevant knowledge points
-- For structural questions ("what does the lecture cover?"), use `get_lecture_summary` or `list_sections`
-- For specific timestamp questions, use `get_transcript_at_time`
-- For deep-dive into a section, use `get_section_details`
+- Choose the RIGHT tool for the question type (slides for logistics, knowledge for concepts)
 - You may call multiple tools if needed for a thorough answer
 - When citing lecture content, ONLY mention time ranges that appear in the tool results
 - NEVER fabricate section names, timestamps, or specific examples that aren't in the retrieved content
@@ -306,7 +333,7 @@ class AgentRunner:
     def _extract_citations_from_steps(
         self, tool_steps: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Extract time-based citations from tool results (for search_knowledge results)."""
+        """Extract time-based citations from tool results (for search_knowledge and search_slides results)."""
         import re
         citations = []
         seen = set()
@@ -336,6 +363,28 @@ class AgentRunner:
                             "end_time": float(end_time),
                             "type": ctype,
                             "relevance": 0.8,
+                        })
+
+            elif step["tool"] == "search_slides":
+                # Parse slide search results
+                result = step.get("result", "")
+                # Pattern: [Slide N] [MM:SS] or [Slide @ MM:SS]
+                pattern = r'\[Slide(?:\s+\d+)?\s*@?\s*(\d+:\d+)\]'
+                for match in re.finditer(pattern, result):
+                    time_str = match.group(1)
+                    bp = time_str.split(":")
+                    begin_time = int(bp[0]) * 60 + int(bp[1])
+
+                    key = f"slide-{begin_time}"
+                    if key not in seen:
+                        seen.add(key)
+                        citations.append({
+                            "source_num": len(citations) + 1,
+                            "title": "Slide",
+                            "begin_time": float(begin_time),
+                            "end_time": float(begin_time) + 5,  # Slides typically shown for a few seconds
+                            "type": "slide",
+                            "relevance": 0.85,
                         })
 
             elif step["tool"] == "get_section_details":

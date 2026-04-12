@@ -174,7 +174,8 @@ const TaskDashboard: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
-    const interval = setInterval(loadTasks, 10000);
+    // Poll more frequently (2s) when there are running tasks for smoother progress updates
+    const interval = setInterval(loadTasks, 2000);
     return () => clearInterval(interval);
   }, []);
 

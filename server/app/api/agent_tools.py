@@ -55,6 +55,34 @@ def make_tools(video_id: str) -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "search_slides",
+                "description": (
+                    "Search slide content (OCR text extracted from presentation slides). "
+                    "Use this for questions about: course logistics (tutors, office hours), "
+                    "contact information (emails, phone numbers), schedules, assignments, "
+                    "visual diagrams, tables, or any information displayed on slides. "
+                    "This tool is especially effective for intro/outro slides with course metadata."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query — keywords to find in slide content"
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of slide results to return (default 5)",
+                            "default": 5
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "get_section_details",
                 "description": (
                     "Get the full details of a specific lecture section by its order number. "
@@ -141,6 +169,8 @@ def execute_tool(video_id: str, tool_name: str, arguments: Dict[str, Any]) -> st
     try:
         if tool_name == "search_knowledge":
             return _tool_search_knowledge(video_id, **arguments)
+        elif tool_name == "search_slides":
+            return _tool_search_slides(video_id, **arguments)
         elif tool_name == "get_section_details":
             return _tool_get_section_details(video_id, **arguments)
         elif tool_name == "get_lecture_summary":
@@ -183,6 +213,85 @@ def _tool_search_knowledge(video_id: str, query: str, top_k: int = 5) -> str:
         )
 
     return "\n\n".join(lines)
+
+
+def _tool_search_slides(video_id: str, query: str, top_k: int = 5) -> str:
+    """Search slide OCR content for visual information like contact details, schedules, etc."""
+    from api.models import SlideOCR
+    from api.vector_store import get_vector_store
+    import re
+
+    # First try vector search on slide content if available in vector store
+    store = get_vector_store()
+    vector_results = store.query(
+        query_text=query,
+        video_id=video_id,
+        content_type="slide_ocr",
+        top_k=top_k
+    )
+
+    # Also do direct database search for keyword matching on OCR text
+    # This is useful for exact matches like email addresses, names, phone numbers
+    keyword_results = []
+    try:
+        # Extract potential keywords from query
+        keywords = [w.lower() for w in query.split() if len(w) > 3]
+
+        # Query all slide OCRs for this video
+        slide_ocrs = SlideOCR.objects.filter(video_id=video_id).order_by('time_second')
+
+        for slide in slide_ocrs:
+            ocr_text_lower = slide.ocr_text.lower()
+            # Check if any keyword matches
+            score = sum(1 for kw in keywords if kw in ocr_text_lower)
+            if score > 0 or any(term in ocr_text_lower for term in ['tutor', 'lecturer', 'email', 'contact', 'office']):
+                keyword_results.append({
+                    'slide': slide,
+                    'score': score,
+                })
+
+        # Sort by relevance score
+        keyword_results.sort(key=lambda x: x['score'], reverse=True)
+
+    except Exception as e:
+        logger.warning(f"Keyword search on slides failed: {e}")
+
+    # Combine and format results
+    lines = ["# Slide Search Results\n"]
+
+    # Add vector search results if any
+    if vector_results:
+        lines.append("## Semantic Search Results:")
+        for i, r in enumerate(vector_results[:3]):
+            meta = r.get("metadata", {})
+            begin = float(meta.get("begin_time", 0))
+            relevance = r.get("relevance", 0)
+            text = r.get("text", "")[:500]
+            lines.append(
+                f"[Slide {i+1}] [{_format_time(begin)}] "
+                f"(relevance: {relevance:.2f})\n{text}\n"
+            )
+
+    # Add keyword search results
+    if keyword_results:
+        lines.append("\n## Keyword Matching Results:")
+        seen_times = set()
+        for i, result in enumerate(keyword_results[:top_k]):
+            slide = result['slide']
+            time_key = int(slide.time_second)
+            # Avoid duplicates from vector search
+            if time_key not in seen_times:
+                seen_times.add(time_key)
+                text_preview = slide.ocr_text[:600]
+                lines.append(
+                    f"[Slide @ {_format_time(slide.time_second)}]\n"
+                    f"{text_preview}\n"
+                )
+
+    if len(lines) == 1:  # Only header
+        return "No slide content found matching this query. The video may not have slide OCR data."
+
+    return "\n".join(lines)
 
 
 def _tool_get_section_details(video_id: str, section_order: int) -> str:
