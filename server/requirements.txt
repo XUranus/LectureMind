@@ -26,3 +26,6 @@ chromadb>=0.5
 
 # Environment
 python-dotenv>=1.0
+
+# Production WSGI server
+gunicorn>=21.2

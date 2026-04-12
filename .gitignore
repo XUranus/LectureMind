@@ -9,6 +9,7 @@ server/app/api/migrations
 server/app/api/__pycache__
 server/app/api/management/__pycache__
 server/app/api/management/commands/__pycache__
+server/app/api/evaluate/__pycache__
 server/app/videoapp/__pycache__
 server/app/logs
 server/app/*.log

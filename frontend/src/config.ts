@@ -37,7 +37,15 @@ export const SUPPORT_MODELS : SupportModelConfigItem[] = [
 
 export const DEFAULT_MODEL : string = "qwen2.5-0.5b-instruct"
 
-export const API_PREFIX : string = "http://127.0.0.1:8000"
+// API_PREFIX is injected at container start via /env-config.js → window.__ENV__.
+// Falls back to the development default so `pnpm start` keeps working without Docker.
+declare global {
+    interface Window {
+        __ENV__?: { API_PREFIX?: string }
+    }
+}
+export const API_PREFIX : string =
+    window.__ENV__?.API_PREFIX ?? "http://127.0.0.1:8000"
 
 export default {
     SUPPORT_MODELS,

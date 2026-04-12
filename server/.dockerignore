@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Django runtime artefacts
+server/app/db.sqlite3
+server/app/media/
+server/app/logs/
+server/app/staticfiles/
+server/app/evaluation_reports/
+
+# Conda / venv
+server/environment.yml
+*.egg-info/
+
+# Demo / docs
+server/demo/
+docs/
+report/
+slides/
+screenshot/
+
+# Git & IDE
+.git/
+.gitignore
+.env
+*.md

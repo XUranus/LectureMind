@@ -1,0 +1,86 @@
+# docker-compose.yml — LectureMind
+# Usage:
+#   cp .env.example .env && vim .env   # fill in secrets
+#   docker compose up --build
+#
+# Three services:
+#   web     — Django + Gunicorn (API)
+#   worker  — Async task processor (same image, different SERVICE)
+#   frontend— React SPA served by nginx
+
+name: lecturemind
+
+services:
+
+  # ── Django API (Gunicorn) ──────────────────────────────────────────────────
+  web:
+    image: lecturemind-backend
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: runtime
+    env_file: .env
+    environment:
+      SERVICE: web
+      DEBUG: "False"
+      MEDIA_ROOT: /data/media
+      LOG_DIR: /data/logs
+      DB_PATH: /data/db.sqlite3
+      CHROMA_PERSIST_DIR: /data/media/chromadb
+      ALLOWED_HOSTS: "localhost,127.0.0.1,web"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000"
+    volumes:
+      - lecturemind_data:/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── Async task worker ──────────────────────────────────────────────────────
+  worker:
+    image: lecturemind-backend
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: runtime
+    env_file: .env
+    environment:
+      SERVICE: worker
+      DEBUG: "False"
+      MEDIA_ROOT: /data/media
+      LOG_DIR: /data/logs
+      DB_PATH: /data/db.sqlite3
+      CHROMA_PERSIST_DIR: /data/media/chromadb
+    volumes:
+      - lecturemind_data:/data
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── React frontend (nginx) ─────────────────────────────────────────────────
+  frontend:
+    image: lecturemind-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      # The browser calls this URL — must be reachable from the user's machine
+      API_PREFIX: "http://localhost:${BACKEND_PORT:-8000}"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  lecturemind_data:
+    driver: local
