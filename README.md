@@ -1,415 +1,423 @@
 # LectureMind
 
-An AI-powered lecture video analysis and summarization platform. Upload lecture videos, and the system automatically segments them, transcribes speech, detects slide transitions, generates knowledge summaries, and provides an intelligent chatbot for Q&A over lecture content.
+An AI-powered lecture video analysis and summarization platform. Upload lecture videos and the system automatically transcribes speech, detects slide transitions, performs OCR on slides, extracts structured knowledge, generates concept maps, and provides an intelligent RAG-powered chatbot for Q&A over lecture content.
 
-> **COMP5575** Group Project (PolyU 26 Spring Semester 2)
+> **COMP5575** Group Project — PolyU 2026 Spring
 
-![Transcript View](screenshot/screenshot.png)
+![Screenshot](screenshot/screenshot.png)
 
 ---
 
 ## Table of Contents
 
-- [LectureMind](#lecturemind)
-  - [Table of Contents](#table-of-contents)
-  - [Project Background](#project-background)
-  - [Features](#features)
-    - [Implemented](#implemented)
-    - [Planned](#planned)
-  - [System Architecture](#system-architecture)
-  - [Video-RAG Pipeline](#video-rag-pipeline)
-    - [Stage 1: Video Preprocessing](#stage-1-video-preprocessing)
-    - [Stage 2: Content Extraction](#stage-2-content-extraction)
-    - [Stage 3: Fine-Grained Knowledge Store](#stage-3-fine-grained-knowledge-store)
-    - [Stage 4: Coarse-Grained Knowledge Store](#stage-4-coarse-grained-knowledge-store)
-    - [Stage 5: RAG Query Engine](#stage-5-rag-query-engine)
-  - [Tech Stack](#tech-stack)
-  - [Project Structure](#project-structure)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Environment Setup](#environment-setup)
-  - [API Reference](#api-reference)
-    - [Videos](#videos)
-    - [Episodes (Courses)](#episodes-courses)
-    - [Tasks](#tasks)
-    - [Endpoints](#endpoints)
-  - [Data Models](#data-models)
-  - [Async Task Pipeline](#async-task-pipeline)
-    - [Current Task DAG](#current-task-dag)
-  - [License](#license)
-
----
-
-## Project Background
-
-The **LectureMind** is an advanced AI system designed to process lecture videos through a multi-stage pipeline: segmenting lectures into meaningful sections, transcribing audio to text, detecting slide transitions, summarizing concepts at multiple granularities, and enabling knowledge-point retrieval through a RAG-based chatbot.
-
-The system transforms raw lecture video input into structured, searchable, and summarized knowledge, making it easy for students and educators to navigate, review, and query lecture content.
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Quick Start (Docker)](#quick-start-docker)
+- [Configuration](#configuration)
+- [Manual Setup (Development)](#manual-setup-development)
+- [Project Structure](#project-structure)
+- [Video-RAG Pipeline](#video-rag-pipeline)
+- [API Reference](#api-reference)
+- [RAG Evaluation](#rag-evaluation)
+- [License](#license)
 
 ---
 
 ## Features
 
-### Implemented
-
 | Feature | Description |
-|---------|-------------|
-| **Video Upload & Management** | Drag-and-drop upload with progress tracking, CRUD operations, course/episode grouping |
-| **HLS Adaptive Streaming** | Multi-resolution transcoding (1080p/720p/480p/360p) with master playlist for adaptive playback |
-| **ASR Transcription** | Automatic speech recognition via **Alibaba DashScope Qwen3-ASR** with sentence-level timestamps, language detection, emotion tagging |
-| **SSIM Slide Detection** | Multithreaded structural similarity analysis to detect slide transitions with configurable thresholds |
-| **Thumbnail Generation** | Automatic thumbnail extraction at detected slide change points |
-| **Async Task Pipeline** | DAG-based task execution engine with dependency chaining, concurrent processing, and error isolation |
-| **Task Monitoring Dashboard** | Real-time task status tracking with per-video task groups |
-| **Interactive Transcript Viewer** | Clickable sentence-level transcript with video seek synchronization |
-| **Course Organization** | Group videos into courses/episodes with nested management |
-
-### Planned
-
-| Feature | Description |
-|---------|-------------|
-| **Fine-Grained Knowledge Summarization** | Per-slide/segment analysis combining slide screenshot + transcript for knowledge point extraction |
-| **Coarse-Grained Knowledge Summarization** | Cross-segment knowledge combination and thematic chapter generation |
-| **Video-RAG System** | Retrieval-augmented generation over lecture content using vector embeddings and semantic search |
-| **Lecture Chatbot** | LLM-powered conversational Q&A grounded in lecture transcripts, slides, and knowledge summaries |
-| **Knowledge Mindmap Generation** | Automatic generation of hierarchical concept maps from lecture content |
-| **Hybrid Chunking** | Combined slide detection + silence gaps + semantic shift analysis for intelligent lecture segmentation |
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          Frontend (React + TypeScript)                   │
-│  ┌──────────┐ ┌──────────────┐ ┌───────────┐ ┌────────┐ ┌───────────┐  │
-│  │  Upload   │ │ Video Player │ │Transcript │ │Chatbot │ │  Mindmap  │  │
-│  │Dashboard │ │  (HLS/Mux)   │ │  Viewer   │ │  Panel │ │  Viewer   │  │
-│  └──────────┘ └──────────────┘ └───────────┘ └────────┘ └───────────┘  │
-└──────────────────────────┬──────────────────────────────────────────────┘
-                           │ REST API
-┌──────────────────────────┴──────────────────────────────────────────────┐
-│                      Backend (Django + DRF)                              │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │                    Synchronous API Layer                           │   │
-│  │  Video CRUD │ Episode CRUD │ Transcript API │ Task API │ Chat API │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │              Async Task Processor (manage.py process_async_task)   │   │
-│  │                                                                    │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐                           │   │
-│  │  │  ASR    │  │  HLS    │  │  SSIM   │  (Parallel, no deps)      │   │
-│  │  │Transcr. │  │Encoding │  │Detection│                           │   │
-│  │  └─────────┘  └─────────┘  └────┬────┘                           │   │
-│  │                                  │                                 │   │
-│  │                             ┌────┴────┐                           │   │
-│  │                             │Thumbnail│                           │   │
-│  │                             │  Gen.   │                           │   │
-│  │                             └────┬────┘                           │   │
-│  │                                  │                                 │   │
-│  │                          ┌───────┴───────┐                        │   │
-│  │                          │  AI Summary   │                        │   │
-│  │                          │  (Knowledge)  │                        │   │
-│  │                          └───────────────┘                        │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │                      AI / ML Services                              │   │
-│  │  DashScope ASR │ LLM (Qwen) │ Embeddings │ Vector DB │ LangGraph │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │                      Storage                                       │   │
-│  │  SQLite (metadata) │ Tencent COS (audio) │ Local FS (media/HLS)   │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Video-RAG Pipeline
-
-The core AI functionality is powered by a **Video-RAG (Retrieval-Augmented Generation)** pipeline that processes videos through hierarchical granularities:
-
-### Stage 1: Video Preprocessing
-- **SSIM Slide Detection**: Frame-by-frame structural similarity comparison to identify slide transition timestamps
-- **Audio Extraction**: Separate audio track using FFmpeg/pydub, convert to 16kHz mono WAV
-- **HLS Transcoding**: Generate multi-resolution adaptive streaming segments
-
-### Stage 2: Content Extraction
-- **ASR Transcription**: Qwen3-ASR produces sentence-level transcripts with timestamps, language codes, and emotion tags
-- **Slide Screenshot Capture**: Extract representative frames at detected transition points
-- **Hybrid Chunking**: Combine slide transitions + silence gaps + semantic similarity (sentence-transformers) to produce intelligent content segments
-
-### Stage 3: Fine-Grained Knowledge Store 
-For each video segment (slide + corresponding transcript):
-- Extract knowledge points using multimodal LLM (slide image + transcript text)
-- Generate per-segment summaries, key concepts, and terminology
-- Create dense vector embeddings for semantic retrieval
-- Store in vector database with metadata (timestamps, segment boundaries)
-
-### Stage 4: Coarse-Grained Knowledge Store 
-Aggregate fine-grained knowledge across segments:
-- Identify thematic chapters by clustering related segments
-- Generate lecture-level summaries, outlines, and concept hierarchies
-- Build cross-reference links between related knowledge points
-- Produce structured mindmaps from the knowledge hierarchy
-
-### Stage 5: RAG Query Engine 
-- **Retrieval**: Semantic search over fine-grained and coarse-grained knowledge stores
-- **Augmentation**: Construct context windows from retrieved segments (transcript + slide + summary)
-- **Generation**: LLM generates grounded answers with source citations and timestamp references
-- **Agent Orchestration**: LangGraph manages multi-step reasoning, tool selection, and context assembly
+|---|---|
+| **Video Upload & Management** | Drag-and-drop upload, CRUD, course/episode grouping |
+| **HLS Adaptive Streaming** | 4-rendition transcoding (1080p/720p/480p/360p) with master playlist |
+| **ASR Transcription** | DashScope Qwen3-ASR — sentence-level timestamps, language detection, emotion tags |
+| **SSIM Slide Detection** | Multithreaded structural similarity analysis for slide transition detection |
+| **Dual-Resolution Thumbnails** | 200 px for web display, 1920 px for high-quality OCR |
+| **Slide OCR** | Vision-language model extracts full text from every slide |
+| **Hybrid Chunking** | Slide transitions + silence gaps + semantic similarity → intelligent segments |
+| **Fine-Grained Knowledge** | Per-section LLM extraction of knowledge points, key terms, importance scores |
+| **Coarse-Grained Summary** | Lecture-level summary, chapter outline, learning objectives, difficulty rating |
+| **Knowledge Mindmap** | Hierarchical concept map generated by LLM, visualised with ReactFlow |
+| **Vector Embeddings** | All content types embedded into ChromaDB for semantic retrieval |
+| **RAG Chatbot (3 modes)** | LLM Direct / Fast RAG / Agentic RAG with automatic fallback chains |
+| **LangGraph Agent** | Multi-step reasoning with tools: search_knowledge, search_slides, get_transcript_range |
+| **Task Monitoring** | Real-time DAG task status dashboard per video |
+| **RAG Evaluation CLI** | Automated Q&A generation, 3-mode comparison, hallucination measurement |
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19, TypeScript, Tailwind CSS, Ant Design 6 |
+|---|---|
+| **Frontend** | React 19, TypeScript, Ant Design 6, Tailwind CSS |
 | **Video Player** | @mux/mux-video-react (HLS adaptive streaming) |
-| **Backend** | Python 3.10, Django 5.2, Django REST Framework |
-| **ASR** | Alibaba DashScope Qwen3-ASR (async file transcription) |
-| **Computer Vision** | OpenCV, scikit-image (SSIM), Pillow |
-| **Video Processing** | FFmpeg (HLS encoding, audio extraction), pydub |
-| **NLP/Embeddings** | sentence-transformers (all-MiniLM-L6-v2) |
-| **LLM** | Qwen2.5 series (planned: 0.5B-7B local, qwen-turbo remote) |
-| **Cloud Storage** | Tencent COS (audio file hosting for ASR) |
-| **Database** | SQLite (development), migration to PostgreSQL |
-| **Agent Framework** | LangGraph  |
-| **Vector Database** | TBD (ChromaDB / Milvus / Qdrant) |
+| **Mindmap** | @xyflow/react (ReactFlow) |
+| **Backend** | Python 3.11, Django 5.2, Django REST Framework |
+| **Production server** | Gunicorn (WSGI) |
+| **Frontend server** | nginx 1.27 (Alpine) |
+| **ASR** | Alibaba DashScope Qwen3-ASR |
+| **LLM** | Qwen series via OpenAI-compatible API (DashScope) |
+| **Vision-Language** | Qwen2.5-VL (slide OCR) |
+| **Agent Framework** | LangGraph |
+| **Embeddings** | sentence-transformers `all-MiniLM-L6-v2` |
+| **Vector Database** | ChromaDB (embedded, persistent) |
+| **Video/Audio** | FFmpeg, OpenCV, Pillow, scikit-image |
+| **Cloud Storage** | Tencent COS (audio hosting for ASR) |
+| **Database** | SQLite (single-node) |
+| **Deployment** | Docker + Docker Compose |
+
+---
+
+## Quick Start (Docker)
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) 24+
+- [Docker Compose](https://docs.docker.com/compose/) v2.20+
+- Alibaba DashScope API key
+- Tencent COS bucket (for ASR audio upload)
+
+### 1. Clone and configure
+
+```bash
+git clone <repo-url>
+cd LectureMind
+cp .env.example .env
+```
+
+Open `.env` and fill in the required values:
+
+```bash
+# Required — LLM and ASR
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
+LLM_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# Required — Tencent COS (audio upload for ASR)
+COS_SECRECT_ID=AKIDxxxxxxxx
+COS_SECRECT_KEY=xxxxxxxx
+COS_REGION=ap-singapore
+COS_BUCKET=your-bucket-name
+
+# Recommended — model selection
+LLM_MODEL=qwen2.5-7b-instruct
+CHAT_MODEL=qwen3-max
+VL_MODEL=qwen2.5-vl-72b-instruct
+```
+
+### 2. Build and start
+
+```bash
+docker compose up --build
+```
+
+This builds two images (`lecturemind-backend`, `lecturemind-frontend`) and starts three containers:
+
+| Container | Role | Default port |
+|---|---|---|
+| `web` | Django API (Gunicorn) | `8000` |
+| `worker` | Async task processor | — |
+| `frontend` | React SPA (nginx) | `3000` |
+
+Open **http://localhost:3000** in your browser.
+
+### 3. Common Docker operations
+
+```bash
+# Start in background
+docker compose up -d
+
+# View logs
+docker compose logs -f web
+docker compose logs -f worker
+docker compose logs -f frontend
+
+# Rebuild after code changes
+docker compose build
+docker compose up -d
+
+# Rebuild a single service
+docker compose build web
+docker compose up -d web
+
+# Stop everything
+docker compose down
+
+# Stop and remove persistent data volume
+docker compose down -v
+```
+
+### 4. Changing ports
+
+Set `BACKEND_PORT` and/or `FRONTEND_PORT` in `.env`:
+
+```bash
+BACKEND_PORT=9000
+FRONTEND_PORT=8080
+```
+
+Then restart: `docker compose up -d`.
+
+---
+
+## Configuration
+
+All settings are driven by environment variables loaded from `.env`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full reference. Key variables:
+
+### Ports
+
+| Variable | Default | Description |
+|---|---|---|
+| `BACKEND_PORT` | `8000` | Host port for the Django API |
+| `FRONTEND_PORT` | `3000` | Host port for the React frontend |
+
+### Storage paths (Docker: all inside the `lecturemind_data` volume at `/data`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `MEDIA_ROOT` | `<BASE_DIR>/media` | Root for all media files |
+| `DB_PATH` | `<BASE_DIR>/db.sqlite3` | SQLite database file |
+| `LOG_DIR` | `<BASE_DIR>/logs` | Log directory |
+| `CHROMA_PERSIST_DIR` | `<MEDIA_ROOT>/chromadb` | ChromaDB vector store |
+
+### LLM models
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_MODEL` | `qwen2.5-7b-instruct` | Task pipeline model |
+| `CHAT_MODEL` | `qwen3-max` | Chat and agentic RAG model |
+| `VL_MODEL` | `qwen2.5-vl-72b-instruct` | Slide OCR vision-language model |
+| `LLM_API_BASE` | DashScope URL | Any OpenAI-compatible endpoint |
+
+Models can also be changed at runtime without restart via the web UI or API:
+
+```bash
+curl -X POST http://localhost:8000/api/config/update/ \
+  -H "Content-Type: application/json" \
+  -d '{"key": "chat_model", "value": "qwen-turbo"}'
+```
+
+---
+
+## Manual Setup (Development)
+
+Use this if you want to run backend and frontend directly without Docker.
+
+### Prerequisites
+
+- Python 3.10+ with conda or pip
+- Node.js 20+ with pnpm
+- FFmpeg installed system-wide (`ffmpeg -version`)
+
+### Backend
+
+```bash
+# 1. Create environment
+cd server
+conda env create -f environment.yml
+conda activate LectureMind
+# or: pip install -r requirements.txt
+
+# 2. Configure
+cd ..
+cp .env.example .env
+# fill in DASHSCOPE_API_KEY, COS_*, etc.
+
+# 3. Migrate database
+cd server/app
+python manage.py migrate
+
+# 4. Start API server (terminal 1)
+python manage.py runserver
+# Port defaults to BACKEND_PORT env var (default 8000)
+
+# 5. Start task processor (terminal 2)
+python manage.py process_async_task
+```
+
+### Frontend
+
+```bash
+cd frontend
+pnpm install
+pnpm start        # dev server on http://localhost:3000
+```
+
+The dev frontend reads `frontend/public/env-config.js` for the API URL:
+
+```js
+// frontend/public/env-config.js
+window.__ENV__ = { API_PREFIX: "http://127.0.0.1:8000" };
+```
+
+Edit this file if your backend runs on a different host or port.
 
 ---
 
 ## Project Structure
 
 ```
-LectureMind-Agent/
-├── README.md
-├── LICENSE                          # Apache 2.0
-├── .env                             # Environment variables (COS, DashScope keys)
-├── .env.example                     # Template for environment setup
+LectureMind/
+├── docker-compose.yml               # 3-service orchestration
+├── .env.example                     # All configurable variables with defaults
+├── .env                             # Your local config (gitignored)
 │
 ├── server/
-│   ├── requirements.txt             # Python dependencies
-│   ├── environment.yml              # Conda environment specification
-│   ├── demo/                        # Standalone demo scripts
-│   │   ├── demo_dashscope_asr.py
-│   │   └── demo_lecture_video_hybrid_chunker.py
+│   ├── Dockerfile                   # 2-stage: builder + python:3.11-slim + FFmpeg
+│   ├── docker-entrypoint.sh         # migrate → collectstatic → web|worker
+│   ├── requirements.txt             # Python deps (incl. gunicorn)
+│   ├── environment.yml              # Conda environment
 │   └── app/
-│       ├── manage.py                # Django management entry point
-│       ├── videoapp/                # Django project configuration
-│       │   ├── settings.py          # Database, CORS, logging, media config
-│       │   ├── urls.py              # Root URL routing
-│       │   ├── wsgi.py
-│       │   └── asgi.py
-│       ├── api/                     # Main Django application
-│       │   ├── models.py            # Episode, Video, Thumbnail, Transcript, AsyncTask
-│       │   ├── serializers.py       # DRF serializers
-│       │   ├── views.py             # API views (CRUD, upload, task trigger)
-│       │   ├── urls.py              # API URL patterns
-│       │   ├── tasks.py             # Async task implementations + registry
-│       │   ├── utils.py             # FFmpeg/HLS/thumbnail utilities
-│       │   ├── dashscope_asr.py     # DashScope Qwen3-ASR client
-│       │   ├── lecture_video_slides_chunker.py   # SSIM slide detection
-│       │   ├── lecture_video_hybrid_chunker.py    # Hybrid semantic chunking
-│       │   └── management/commands/
-│       │       └── process_async_task.py  # Async task processor daemon
-│       └── media/                   # Runtime media storage
-│           ├── videos/              # Uploaded video files
-│           ├── audio/               # Extracted WAV files
-│           ├── thumbnails/          # Generated thumbnail images
-│           └── streams/             # HLS streaming segments
+│       ├── manage.py
+│       ├── videoapp/
+│       │   ├── settings.py          # All paths/ports from env vars
+│       │   └── urls.py
+│       └── api/
+│           ├── models.py            # All Django models
+│           ├── views.py             # DRF API views
+│           ├── tasks.py             # Async task implementations + TASK_REGISTRY
+│           ├── agent_graph.py       # LangGraph agentic RAG
+│           ├── agent_tools.py       # Agent tools
+│           ├── rag_engine.py        # Fast RAG engine
+│           ├── vector_store.py      # ChromaDB abstraction
+│           ├── dashscope_asr.py     # ASR client
+│           ├── lecture_video_slides_chunker.py
+│           ├── lecture_video_hybrid_chunker.py
+│           ├── evaluate/            # RAG evaluation module
+│           └── management/commands/
+│               ├── process_async_task.py
+│               ├── evaluate_rag.py
+│               └── runserver.py     # Respects BACKEND_PORT env
 │
 ├── frontend/
-│   ├── package.json                 # React app dependencies (pnpm)
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
+│   ├── Dockerfile                   # 2-stage: node builder + nginx:1.27-alpine
+│   ├── docker-entrypoint.sh         # writes env-config.js → starts nginx
+│   ├── nginx/default.conf
+│   ├── public/
+│   │   ├── index.html
+│   │   └── env-config.js            # Runtime API URL (overwritten in Docker)
 │   └── src/
-│       ├── index.tsx                # App entry point
-│       ├── MainLayout.tsx           # Routing + sidebar layout
-│       ├── config.ts                # API prefix, supported LLM models
-│       ├── model.tsx                # TypeScript interfaces
+│       ├── config.ts                # API_PREFIX from window.__ENV__
+│       ├── MainLayout.tsx
 │       ├── page/
-│       │   ├── UploadDashboard.tsx   # Video upload with drag-and-drop
-│       │   ├── VideoDashboard.tsx    # Video library grid
-│       │   ├── CourseDashboard.tsx   # Course/episode management
-│       │   ├── TaskDashboard.tsx     # Async task monitoring
-│       │   └── LectureVideoAnalysis.tsx  # Main analysis page
 │       └── components/
-│           ├── ChatPanel.tsx         # Chat UI component
-│           ├── ThinkingPanel.tsx     # AI reasoning visualization
-│           └── lecture/
-│               ├── StreamVideo.tsx       # HLS video player
-│               ├── LectureTranscripts.tsx # Transcript viewer
-│               ├── LectureSections.tsx    # Section/chapter viewer
-│               ├── LectureChatbot.tsx     # Lecture Q&A chatbot
-│               └── CourseCreationModal.tsx
 │
-├── docs/                            # Documentation
-└── screenshot/                      # UI screenshots
+└── docs/
+    ├── ARCHITECTURE.md              # System architecture reference
+    ├── CONFIGURATION.md             # Full configuration reference
+    └── RAG_EVALUATION.md            # Evaluation module documentation
 ```
 
 ---
 
-## Getting Started
+## Video-RAG Pipeline
 
-### Prerequisites
+After a video is uploaded, the async task processor runs this DAG automatically:
 
-- Python 3.10+ with conda or virtualenv
-- Node.js 18+ with pnpm
-- FFmpeg installed system-wide
-- Alibaba Cloud DashScope API key (for ASR)
-- Tencent Cloud COS credentials (for audio file hosting)
-
-### Environment Setup
-
-1. **Clone and configure environment variables**:
-```bash
-git clone <repo-url>
-cd LectureMind-Agent
-cp .env.example .env
-# Edit .env with your API keys:
-#   DASHSCOPE_API_KEY=your_dashscope_key
-#   COS_SECRECT_ID=your_cos_secret_id
-#   COS_SECRECT_KEY=your_cos_secret_key
-#   COS_REGION=ap-singapore
-#   COS_BUCKET=your_bucket_name
 ```
-
-2. **Backend setup**:
-```bash
-cd server
-conda env create -f environment.yml    # or: pip install -r requirements.txt
-conda activate LectureMind
-cd app
-python manage.py migrate
-python manage.py runserver             # Start API server on :8000
+Upload Video
+     │
+     ├──→ ASR Transcription        (DashScope Qwen3-ASR via Tencent COS)
+     ├──→ HLS Encoding             (FFmpeg → 4 renditions)
+     └──→ SSIM Slide Detection     (multithreaded frame comparison)
+               │
+               └──→ Thumbnail Generation
+                    (200px web + 1920px OCR, saved to MEDIA_THUMBNAILS_DIR)
+                         │
+                         └──→ Slide OCR
+                              (VL model on high-res thumbnails → SlideOCR)
+                                   │
+                                   └──→ Hybrid Chunking
+                                        (slide + silence + semantic → VideoSection)
+                                             │
+                                    ┌────────┼────────┬────────────┐
+                                    │        │        │            │
+                              Fine-Grained  Coarse  Mindmap   Embed
+                              Knowledge   Summary   Gen.    Knowledge
+                              (KP + terms) (summary) (JSON)  (→ChromaDB)
 ```
-
-3. **Start the async task processor** (separate terminal):
-```bash
-cd server/app
-python manage.py process_async_task    # Polls for pending tasks every 5s
-```
-
-4. **Frontend setup**:
-```bash
-cd frontend
-pnpm install
-pnpm start                             # Start dev server on :3000
-```
-
-5. Open `http://localhost:3000` in your browser.
 
 ---
 
 ## API Reference
 
-All endpoints are prefixed with `/api/`.
+All endpoints prefixed with `/api/`.
 
 ### Videos
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | `GET` | `/api/videos/` | List all videos |
 | `POST` | `/api/videos/upload/` | Upload video (multipart/form-data) |
 | `GET` | `/api/videos/<uuid>/` | Get video details |
 | `PATCH` | `/api/videos/update/<uuid>/` | Update video metadata |
-| `DELETE` | `/api/videos/delete/<uuid>/` | Delete video and related data |
-| `GET` | `/api/videos/<uuid>/thumbnails/` | List thumbnails for a video |
-| `GET` | `/api/videos/<uuid>/transcript/` | Get ASR transcript with sentences |
-| `POST` | `/api/videos/process/` | Trigger async processing pipeline |
+| `DELETE` | `/api/videos/delete/<uuid>/` | Delete video and all related data |
+| `GET` | `/api/videos/<uuid>/thumbnails/` | List slide thumbnails |
+| `GET` | `/api/videos/<uuid>/transcript/` | ASR transcript with sentence timestamps |
+| `GET` | `/api/videos/<uuid>/sections/` | Hybrid-chunker segments/chapters |
+| `GET` | `/api/videos/<uuid>/knowledge/` | Fine-grained knowledge points |
+| `GET` | `/api/videos/<uuid>/summary/` | Coarse-grained lecture summary |
+| `GET` | `/api/videos/<uuid>/mindmap/` | Knowledge mindmap JSON |
+
+### Chat
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/chat/` | Create chat session |
+| `POST` | `/api/chat/<uuid>/message/` | Send message, get SSE streaming response |
+| `GET` | `/api/chat/<uuid>/messages/` | Get chat history |
+
+### Tasks & System
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/tasks/video/<uuid>/` | Task status for a video |
+| `GET` | `/api/config/` | List runtime configuration (secrets masked) |
+| `POST` | `/api/config/update/` | Update configuration at runtime |
+| `POST` | `/api/config/sync-from-env/` | Sync `.env` file → database |
+| `GET` | `/api/health/` | Health check |
 
 ### Episodes (Courses)
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | `GET` | `/api/episodes/` | List all episodes |
-| `POST` | `/api/episodes/new/` | Create new episode |
+| `POST` | `/api/episodes/new/` | Create episode |
 | `GET` | `/api/episodes/<uuid>/` | Get episode with nested videos |
 | `PATCH` | `/api/episodes/update/<uuid>/` | Update episode |
 | `DELETE` | `/api/episodes/delete/<uuid>/` | Delete episode |
 
-### Tasks
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/tasks/video/<uuid>/` | List tasks for a video |
-| `POST` | `/api/tasks/new/` | Create a task manually |
-| `GET` | `/api/tasks/<uuid>/` | Get task details |
-
-### Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/videos/<uuid>/sections/` | Get video sections/chapters |
-| `GET` | `/api/videos/<uuid>/summary/` | Get AI-generated summary |
-| `GET` | `/api/videos/<uuid>/knowledge/` | Get knowledge points |
-| `GET` | `/api/videos/<uuid>/mindmap/` | Get knowledge mindmap data |
-| `POST` | `/api/chat/` | Create a chat session |
-| `POST` | `/api/chat/<uuid>/message/` | Send message to chatbot |
-| `GET` | `/api/chat/<uuid>/messages/` | Get chat history |
-| `GET` | `/api/health/` | Server health check |
-
 ---
 
-## Data Models
+## RAG Evaluation
 
+The evaluation CLI compares the three RAG modes on a video's knowledge base:
+
+```bash
+cd server/app
+
+# Basic: 20 auto-generated questions
+python manage.py evaluate_rag --video <uuid> --questions 20
+
+# With custom questions (remainder auto-generated to reach --question_count)
+python manage.py evaluate_rag \
+    --video <uuid> \
+    --question "Who are the tutors?,What is the grading policy?" \
+    --question_count 10
+
+# Custom models and output formats
+python manage.py evaluate_rag \
+    --video <uuid> \
+    --sota-model qwen3.6-plus \
+    --test-model qwen-turbo \
+    --formats json,csv,md,html \
+    --output ./evaluation_reports/
 ```
-Episode (course/lecture series)
-  └── Video (uploaded lecture video)
-        ├── Thumbnail (slide screenshots at transition points)
-        ├── VideoTranscript (ASR metadata, 1:1)
-        │     └── TranscriptSentence (timestamped sentences)
-        ├── AsyncTaskItem (processing pipeline tasks, DAG)
-        │
-        │  --- ---
-        ├── VideoSection (thematic chapter boundaries)
-        ├── KnowledgePoint (fine-grained knowledge entries)
-        ├── KnowledgeSummary (coarse-grained summaries)
-        ├── KnowledgeMindmap (hierarchical concept map)
-        └── ChatSession
-              └── ChatMessage
-```
+
+Reports are saved to `./evaluation_reports/` with JSON, CSV, Markdown, and HTML formats.
+See [docs/RAG_EVALUATION.md](docs/RAG_EVALUATION.md) for full details.
 
 ---
-
-## Async Task Pipeline
-
-The system uses a custom DAG-based async task processor (`python manage.py process_async_task`) that:
-
-- **Polls** the database every 5 seconds for pending tasks
-- **Resolves dependencies** via the `previous` field (task chaining)
-- **Uses row-level locking** (`SELECT FOR UPDATE SKIP LOCKED`) for safe concurrent processing
-- **Chains outputs** -- a completed task's result JSON is merged into the next task's input
-- **Handles errors** in isolation without blocking sibling tasks
-- **Supports graceful shutdown** via SIGINT/SIGTERM
-
-### Current Task DAG
-
-```
-Upload Video
-     │
-     ├──→ Task 1: ASR Transcription ──────────────┐
-     │    (extract audio → COS upload → Qwen-ASR)  │  No dependencies
-     │                                              │  between 1, 2, 3
-     ├──→ Task 2: HLS Encoding ────────────────────┤
-     │    (multi-resolution transcoding)            │
-     │                                              │
-     └──→ Task 3: SSIM Slide Detection ────────────┘
-          (frame change detection)
-               │
-               └──→ Task 4: Thumbnail Generation
-                    (extract frames at slide changes)
-                         │
-                         └──→ Task 5: AI Summary (stub)
-                              (planned: LLM-powered summarization)
-```
 
 ## License
 
-Apache License 2.0 -- see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE) for details.

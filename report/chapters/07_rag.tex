@@ -1,6 +1,24 @@
 \section{RAG System}
 \label{sec:rag}
 
+\subsection{Three-Mode Architecture}
+
+The RAG system exposes three query modes of increasing capability, connected by a cascading fallback chain to ensure reliable answers under all conditions.
+
+\begin{table}[H]
+    \centering
+    \caption{RAG Query Modes}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Mode} & \textbf{Strategy} & \textbf{Fallback Trigger} & \textbf{Fallback To} \\ \midrule
+        LLM Direct   & Pure LLM, no retrieval          & ---                              & --- \\
+        Fast RAG     & Single-pass vector retrieval    & Relevance $<$ 0.3 or $<$ 2 docs & LLM Direct \\
+        Agentic RAG  & Multi-step ReAct agent          & Agent failure / low quality    & Fast RAG $\to$ LLM Direct \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+The fallback chain ensures the system always returns a useful response. Fast RAG falls back when vector retrieval cannot find sufficiently relevant documents (minimum relevance threshold \texttt{MIN\_RELEVANCE\_THRESHOLD=0.3}, minimum document count \texttt{MIN\_DOCUMENTS\_REQUIRED=2}). Agentic RAG falls back to Fast RAG on agent-level failures and ultimately to LLM Direct if retrieval also fails.
+
 \subsection{Vector Database Design}
 
 \subsubsection{ChromaDB Selection}
@@ -38,7 +56,7 @@ This model provides an excellent balance of performance and efficiency for our u
 
 \subsubsection{Document Types}
 
-Two types of content are embedded and stored:
+Three types of content are embedded and stored:
 
 \textbf{1. Knowledge Points} (type: \texttt{knowledge\_point})
 
@@ -51,9 +69,15 @@ Metadata includes video\_id, section\_id, title, begin\_time, end\_time, and imp
 
 \textbf{2. Section Transcripts} (type: \texttt{section\_transcript})
 
-Embed text: First 2000 characters of section transcript (truncated to fit model limits)
+Embed text: First 2000 characters of section transcript (truncated to fit model limits).
 
 Metadata includes video\_id, section\_id, title, begin\_time, end\_time.
+
+\textbf{3. Slide OCR Text} (type: \texttt{slide\_ocr})
+
+Embed text: OCR-extracted text content from high-resolution slide thumbnails (1920px), enabling semantic search over slide textual content including equations, bullet points, and diagram labels not captured in the spoken transcript.
+
+Metadata includes video\_id, thumbnail\_id, timestamp.
 
 \subsubsection{Storage Efficiency}
 
@@ -62,13 +86,14 @@ Typical storage per 60-minute lecture:
 \begin{itemize}
     \item Knowledge points: 25-40 entries $\times$ ~200 bytes = 5-8 KB
     \item Section transcripts: 8-12 entries $\times$ ~2 KB = 16-24 KB
+    \item Slide OCR entries: 20-60 entries $\times$ ~500 bytes = 10-30 KB
     \item HNSW index overhead: ~100-200 KB
     \item \textbf{Total:} 2-4 MB per video (including SQLite overhead)
 \end{itemize}
 
-\subsection{Quick RAG Pipeline}
+\subsection{Fast RAG Pipeline}
 
-The Quick RAG mode provides fast, single-shot retrieval and generation.
+The Fast RAG mode provides single-shot retrieval and generation with quality-gated fallback.
 
 \subsubsection{Retrieval Process}
 
@@ -80,8 +105,9 @@ Given a user question $q$:
     \begin{equation}
         R = \text{top\_k}(\{d : \cos(e_q, e_d) \geq \tau_{rel}\})
     \end{equation}
-    where $\tau_{rel} = 0.2$ (relevance threshold)
-    \item Format retrieved documents as numbered sources
+    where $\tau_{rel} = 0.3$ (relevance threshold)
+    \item If $|R| < 2$: fall back to LLM Direct mode
+    \item Otherwise: format retrieved documents as numbered sources
 \end{enumerate}
 
 \subsubsection{Context Assembly}
@@ -139,26 +165,27 @@ After generation, citations are extracted by parsing [Source N] references and m
 }
 \end{lstlisting}
 
-These citations are returned to the frontend for rendering as clickable badges.
+These citations are returned to the frontend for rendering as clickable timestamp badges.
 
 \subsection{Agent System (ReAct Mode)}
 
-For complex questions requiring multi-step reasoning, we implement a ReAct (Reasoning + Acting) agent.
+For complex questions requiring multi-step reasoning, we implement a ReAct (Reasoning + Acting) agent using the LangGraph framework.
 
 \subsubsection{ReAct Loop}
 
-The agent follows an iterative loop:
+The agent follows an iterative loop implemented as a LangGraph state machine:
 
 \begin{enumerate}
     \item LLM analyzes question and decides whether to call a tool or respond
     \item If tool call: execute tool, append result to conversation
     \item Repeat until LLM produces final text response
     \item Maximum 5 iterations to prevent infinite loops
+    \item On failure or low quality: fall back to Fast RAG
 \end{enumerate}
 
 \subsubsection{Available Tools}
 
-Five tools are available to the agent:
+Six tools are available to the agent:
 
 \begin{table}[H]
     \centering
@@ -166,13 +193,20 @@ Five tools are available to the agent:
     \begin{tabular}{@{}lll@{}}
         \toprule
         \textbf{Tool} & \textbf{Purpose} & \textbf{Input} \\ \midrule
-        search\_knowledge & Vector search & query string \\
+        search\_knowledge & Vector search on knowledge points \& transcripts & query string \\
+        search\_slides    & OCR-text search on slide content                & query string \\
         get\_section\_details & Full section content & section order \\
-        get\_lecture\_summary & Overview + chapters & - \\
-        list\_sections & All section titles/times & - \\
+        get\_lecture\_summary & Overview + chapters & --- \\
+        list\_sections & All section titles/times & --- \\
         get\_transcript\_at\_time & Transcript slice & start, end times \\ \bottomrule
     \end{tabular}
 \end{table}
+
+The \texttt{search\_slides} tool searches \texttt{SlideOCR} records stored in ChromaDB, giving the agent access to text content written on slides (equations, definitions, bullet points) that may not be verbally explained in the transcript.
+
+\subsubsection{Citation Sanitization}
+
+A post-processing step strips hallucinated citation markers from agent responses. When the agent fabricates references such as \texttt{[Source 4]} that do not correspond to any actual tool result, these are removed from the final answer before delivery to the frontend.
 
 \subsubsection{Tool Selection}
 
@@ -241,3 +275,4 @@ For follow-up questions, conversation history is included in the prompt:
 \end{itemize}
 
 The 6-message limit balances context quality with token budget constraints.
+

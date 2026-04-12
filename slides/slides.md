@@ -79,14 +79,15 @@ Our project has a classic B-S architecture. The frontend is built with React and
 
 <!--
 Speaker Notes:
-This is the heart of our system - a 9-task directed acyclic graph. 
+This is the heart of our system - a 10-task directed acyclic graph. 
 Tasks 1, 2, and 3 run in parallel since they have no dependencies. 
 T1 extracts audio and transcribes using Alibaba's DashScope Qwen3-ASR. 
 T2 creates HLS streaming files for adaptive playback. 
 T3 detects slide transitions using SSIM analysis. 
-Once T3 completes, T4 generates thumbnails at detected slide changes. 
-T5 then performs hybrid chunking, combining slide transitions with silence detection to create meaningful sections. 
-The remaining tasks T6 through T9 form a sequential chain for AI-powered knowledge extraction, embedding, summarization, and mindmap generation.
+Once T3 completes, T4 generates dual-resolution thumbnails: 200px for web display and 1920px for high-quality OCR. 
+T5 performs Slide OCR using the high-resolution images to extract text from slide content. 
+T6 then performs hybrid chunking, combining slide transitions with silence detection to create meaningful sections. 
+The remaining tasks T7 through T10 form a sequential chain for AI-powered knowledge extraction, embedding, summarization, and mindmap generation.
 -->
 
 ---
@@ -309,7 +310,59 @@ For example, searching within a specific video or filtering by content type. The
 
 ---
 
-# RAG Engine: Retrieval-Augmented Generation
+# RAG Engine: Three-Mode Architecture
+
+| Mode | Description | Fallback |
+|------|-------------|---------|
+| **LLM Direct** | Pure LLM — no retrieval | — |
+| **Fast RAG** | Single-pass vector retrieval | → LLM Direct (if quality < threshold) |
+| **Agentic RAG** | Multi-step ReAct agent | → Fast RAG → LLM Direct |
+
+**Quality Gates (Fast RAG fallback triggers when):**
+- Relevance score < 0.3 for all retrieved docs
+- Fewer than 2 documents pass the relevance filter
+
+<!--
+Speaker Notes:
+Our RAG system now implements three distinct modes. LLM Direct is the baseline — no retrieval, pure model knowledge. Fast RAG does single-shot vector retrieval and falls back to LLM Direct if retrieved documents are not relevant enough. Agentic RAG uses the full ReAct loop with multiple tools and will fall back through Fast RAG to LLM Direct if needed. This cascading fallback ensures the system always returns a useful answer rather than failing silently.
+-->
+
+---
+
+# Slide OCR: High-Resolution Image Pipeline
+
+**Purpose:** Extract text from lecture slides for richer search context
+
+**Dual-Resolution Thumbnails:**
+- `image` (200px) — fast web display
+- `image_high_res` (1920px) — high-quality OCR input
+
+**OCR Pipeline:**
+```
+High-res thumbnail (1920px)
+         │
+         ▼
+Qwen-VL multimodal LLM
+         │
+         ▼
+SlideOCR record (text + video_id + timestamp)
+         │
+         ▼
+search_slides() agent tool
+```
+
+**Impact on Agentic RAG:**
+- Agent can now search *what is written on slides* (equations, bullet points, diagrams)
+- Complements `search_knowledge` (semantic search on extracted knowledge points)
+
+<!--
+Speaker Notes:
+A key enhancement we made is slide OCR. Previously we detected slide transitions and generated thumbnails, but we never read the actual slide content. Now we generate two sizes: a small 200px image for fast web rendering, and a full 1920px image specifically for OCR. We feed the high-res image to a multimodal LLM to extract the slide text. The resulting SlideOCR records are accessible to the agentic RAG system via the search_slides tool, allowing the agent to find content that appears on slides but may not be in the transcript — like equations, diagrams, or bullet lists.
+-->
+
+---
+
+# RAG System: Quick RAG Pipeline
 
 <div class="bottom-right"><img src="./assets/quickrag.png" ></div>
 
@@ -364,7 +417,8 @@ The Agent mode implements a ReAct loop - Reasoning plus Acting. Instead of a sin
 # Agent System: ReAct Multi-Step Reasoning
 
 **Available Tools:**
-- `search_knowledge(query)` - Vector search
+- `search_knowledge(query)` - Vector search on knowledge points & transcripts
+- `search_slides(query)` - OCR-text search on slide content
 - `get_section_details(section_order)` - Full section content
 - `get_lecture_summary()` - Overview + chapters
 - `list_sections()` - All section titles/times
@@ -489,6 +543,65 @@ The mindmap provides a visual overview of the lecture's concept hierarchy. We ga
 
 ---
 
+# RAG Evaluation: Automated LLM-as-Judge
+
+**Setup:** 9 questions × 3 modes · Judge: qwen3.6-plus · Test model: qwen-turbo
+
+| Mode | Avg Score | Accuracy | Completeness | Hallucination | Avg Latency |
+|------|-----------|----------|--------------|---------------|-------------|
+| LLM Direct | 69.4 | 66.7% | 66.7% | **0.0%** | 2866 ms |
+| Fast RAG | 71.8 | 71.7% | 68.3% | **0.0%** | 4767 ms |
+| **Agentic RAG** | **74.2** | **72.8%** | **71.1%** | 11.1% | 5227 ms |
+
+**Key Findings:**
+- Agentic RAG achieves the **highest overall score** (+4.8 pts over LLM Direct)
+- Fast RAG **eliminates hallucinations** entirely (0%) — conservative but reliable
+- Agentic RAG hallucinates on "INSUFFICIENT\_INFO" questions (fabricates details not in slides)
+- On **factual questions**, RAG modes dominate: Fast RAG 100/100, Agentic RAG 95/100 vs LLM Direct 5/100
+- On **irrelevant questions**, all modes correctly decline (score 100)
+
+<!--
+Speaker Notes:
+We ran an automated RAG evaluation using 9 questions across three modes. The judge LLM scores each answer against a ground truth on accuracy, completeness, and hallucination. Results are clear: Agentic RAG has the highest average score across all question types, but it hallucinates on questions where the answer isn't in the lecture — it makes up specific details rather than saying "I don't know." Fast RAG is more conservative: it falls back to general knowledge when retrieval quality is poor, which avoids hallucination but can reduce completeness. The sweet spot depends on the use case: factual lookups favor RAG modes, broad conceptual questions can be handled by any mode.
+-->
+
+---
+
+# Deployment: Docker Compose Architecture
+
+**Three-container setup with shared persistent volume:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  lecturemind_data (Docker volume at /data)          │
+│  /data/db.sqlite3  /data/media/  /data/logs/        │
+└────────────┬──────────────────────────┬─────────────┘
+             │                          │
+    ┌────────▼─────────┐    ┌───────────▼──────────┐
+    │  web (Gunicorn)  │    │  worker               │
+    │  Django REST API │    │  process_async_task   │
+    │  :8000           │    │  (same image)         │
+    └──────────────────┘    └──────────────────────┘
+
+    ┌────────────────────────────────┐
+    │  frontend (nginx)              │
+    │  React SPA · runtime env-cfg   │
+    │  :3000                         │
+    └────────────────────────────────┘
+```
+
+```bash
+cp .env.example .env   # configure API keys & paths
+docker compose up --build
+```
+
+<!--
+Speaker Notes:
+For production deployment, we containerized the entire stack with Docker Compose. The backend image serves dual purpose: the web container runs Gunicorn for the REST API, and the worker container runs the async task processor — same image, different SERVICE environment variable. Both share a named Docker volume for SQLite, media files, ChromaDB, and logs. The React frontend is served by nginx, which also injects runtime configuration so the API URL can be changed without rebuilding the image. All paths and ports are configurable via environment variables in a .env file.
+-->
+
+---
+
 # Technical Challenges & Solutions
 
 | Challenge | Solution |
@@ -497,6 +610,9 @@ The mindmap provides a visual overview of the lecture's concept hierarchy. We ga
 | **LLM JSON parsing errors** | Robust parser handles fenced JSON, embedded JSON, raw JSON |
 | **Long video processing** | Frame sampling at 10 FPS, multithreaded SSIM |
 | **Grounded RAG answers** | Strict system prompt + relevance filtering + citations |
+| **Agent hallucination** | Fallback chain: Agentic → Fast RAG → LLM Direct |
+| **OCR quality on slides** | Dual-res thumbnails: 200px web + 1920px OCR |
+| **Runtime config without rebuild** | nginx writes `env-config.js` from env vars at container start |
 
 <!--
 Speaker Notes:
@@ -521,10 +637,10 @@ We faced several technical challenges during development. Memory constraints on 
    - `compare_concepts(concept_a, concept_b)` - Direct comparison tool
    - `summarize_range(video_id, start, end)` - On-demand summarization
 
-4. **Production Deployment**
-   - PostgreSQL migration (from SQLite)
-   - Docker Compose setup
+4. **Production Hardening**
+   - PostgreSQL migration (from SQLite) for concurrent access
    - User authentication & authorization
+   - Load-balanced multi-worker Gunicorn deployment
 
 <!--
 Speaker Notes:
@@ -535,23 +651,28 @@ Looking ahead, we have several exciting enhancements planned. Multi-video course
 
 # Summary
 
-**LectureMind make lecture videos interactive learning experiences through:**
+**LectureMind transforms lecture videos into interactive learning experiences through:**
 
 1. **Automated Preprocessing**
-   - SSIM slide detection (multithreaded, efficient)
-   - Hybrid chunking (slide + silence + semantic)
-   - ASR transcription with timestamps
+   - SSIM slide detection (multithreaded, 10 FPS sampling)
+   - Hybrid chunking (slide + silence signals)
+   - ASR transcription with sentence-level timestamps
+   - Dual-resolution thumbnails + Slide OCR (1920px → text)
 2. **AI Knowledge Extraction**
    - Fine-grained: Per-section knowledge points via LLM
    - Coarse-grained: Lecture-level summaries and chapters
-   - Mindmap: Hierarchical concept visualization
-3. **Intelligent Q&A**
-   - Quick RAG/Agent mode, grounded answers with timestamp citations
-
+   - Mindmap: Hierarchical concept visualization (ReactFlow)
+3. **Intelligent Q&A — Three RAG Modes**
+   - Fast RAG: single-pass retrieval, 0% hallucination
+   - Agentic RAG: multi-step ReAct with 6 tools, best overall score (74.2)
+   - Cascading fallback ensures reliable answers
+4. **Production-Ready Deployment**
+   - Docker Compose: web + worker + frontend containers
+   - All paths/ports configurable via `.env`
 
 <!--
 Speaker Notes:
-To summarize, LectureMind transforms passive lecture videos into interactive learning experiences. Our automated preprocessing handles slide detection, intelligent chunking, and transcription. AI knowledge extraction produces both fine-grained knowledge points and coarse-grained summaries, visualized as an interactive mindmap. The RAG system enables intelligent Q&A with both fast factual answers and sophisticated multi-step reasoning. All answers are grounded in actual lecture content with clickable citations. We've built a complete end-to-end system that makes lecture content searchable, navigable, and conversational.
+To summarize, LectureMind now covers the full lifecycle from raw video to interactive Q&A. Our 10-task pipeline handles transcription, slide detection, OCR, and knowledge extraction. The dual-resolution thumbnail pipeline feeds both web display and high-quality OCR. Our three-mode RAG system — evaluated with an automated LLM judge — shows Agentic RAG achieves the highest quality while Fast RAG provides the most reliable, hallucination-free answers. The entire system is containerized with Docker Compose and fully configurable via environment variables.
 -->
 
 ---

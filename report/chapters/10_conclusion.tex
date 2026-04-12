@@ -3,6 +3,76 @@
 
 \subsection{Summary}
 
+This paper presented LectureMind, an AI-powered platform for lecture video analysis and summarization. Our system processes raw lecture videos through a sophisticated 10-task pipeline that includes:
+
+\begin{itemize}
+    \item Multithreaded SSIM-based slide transition detection
+    \item Hybrid video chunking combining multiple segmentation signals
+    \item Dual-resolution thumbnail generation (200px web + 1920px OCR)
+    \item Slide OCR using multimodal LLM on high-resolution thumbnails
+    \item LLM-powered fine-grained and coarse-grained knowledge extraction
+    \item Vector database storage (ChromaDB) for semantic retrieval with three content types
+    \item Three-mode RAG system (LLM Direct, Fast RAG, Agentic RAG) with cascading fallback
+    \item Citation-backed answers with timestamp-linked sources
+    \item Production-ready Docker Compose deployment with fully configurable environment
+\end{itemize}
+
+Evaluation results demonstrate that the system achieves high-quality segmentation (F1: 0.84) and reliable RAG performance: Agentic RAG achieves the highest overall score (74.2/100) while Fast RAG eliminates hallucinations entirely (0\%) through conservative quality-gated fallback. The automated LLM-as-judge evaluation framework provides a reproducible methodology for ongoing quality assessment.
+
+\subsection{Limitations}
+
+Despite promising results, several limitations remain:
+
+\begin{enumerate}
+    \item \textbf{Language Support:} Currently optimized for English lectures; multilingual support requires additional ASR and embedding model configuration.
+    \item \textbf{Semantic Chunking:} The semantic similarity feature is disabled due to memory constraints, potentially missing some topic boundaries in continuous speech.
+    \item \textbf{Real-time Processing:} The system operates in batch mode; real-time processing of live lectures is not supported.
+    \item \textbf{Scalability:} The current architecture uses SQLite, which may not scale to thousands of concurrent users without migration to PostgreSQL.
+    \item \textbf{Agentic Hallucination on Unknown Topics:} The agent occasionally fabricates details on questions whose answers are absent from the lecture content. The fallback chain mitigates but does not eliminate this risk.
+    \item \textbf{OCR Quality Variance:} Slide OCR accuracy depends on slide design; heavily stylized slides, handwriting, or low-contrast diagrams may not OCR accurately.
+\end{enumerate}
+
+\subsection{Future Work}
+
+Several directions for future development are planned:
+
+\subsubsection{Cross-Video Course RAG}
+
+Extend the RAG system to support course-level queries across multiple lectures: ``Compare how gradient descent is explained in Lectures 1 and 3.'' This requires course-scoped vector indexing and multi-video retrieval with cross-lecture citation linking.
+
+\subsubsection{Adaptive Chunking}
+
+Implement dynamic parameter tuning for hybrid chunking based on lecture characteristics (speaking rate, slide change frequency, subject domain). Re-enable semantic similarity with a more memory-efficient model.
+
+\subsubsection{Enhanced Agent Tools}
+
+Add higher-order reasoning tools to the Agentic RAG system:
+\begin{itemize}
+    \item \texttt{compare\_concepts(concept\_a, concept\_b)} --- Direct concept comparison
+    \item \texttt{summarize\_range(start, end)} --- On-demand summarization of arbitrary video segments
+\end{itemize}
+
+\subsubsection{Production Hardening}
+
+Migrate to PostgreSQL for robust concurrent access, implement user authentication and authorization, and deploy on cloud infrastructure with load-balanced multi-worker Gunicorn for scalability.
+
+\subsubsection{Learning Analytics}
+
+Leverage interaction data (chat queries, citation clicks, video seek patterns) to provide instructors with insights into student learning behaviours and knowledge gaps.
+
+\subsubsection{Quiz Generation}
+
+Automatically generate practice questions from extracted knowledge points, enabling self-assessment and exam preparation from lecture content.
+
+\subsection{Impact}
+
+LectureMind demonstrates the potential of combining computer vision, speech recognition, and large language models to transform educational video content into interactive, searchable knowledge bases. By enabling students to efficiently navigate, review, and query lecture material through three complementary RAG modes, the system has the potential to improve learning outcomes and reduce the time burden of video-based study.
+
+The techniques developed --- particularly the dual-resolution OCR pipeline, cascading RAG fallback chain, and automated LLM-as-judge evaluation framework --- are applicable beyond educational videos to any domain requiring structured analysis of long-form video content, including corporate training, conference recordings, and tutorial libraries.
+
+
+\subsection{Summary}
+
 This paper presented LectureMind, an AI-powered platform for lecture video analysis and summarization. Our system processes raw lecture videos through a sophisticated pipeline that includes:
 
 \begin{itemize}

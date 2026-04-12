@@ -57,7 +57,7 @@ Rules:
 LLM responses are parsed with robust error handling:
 
 \begin{enumerate}
-    \item Remove markdown code fences (\texttt{\`\`\`json ... \`\`\`})
+    \item Remove markdown code fences (\verb|```json ... ```|)
     \item Extract JSON from prose if embedded in text
     \item Validate against expected schema
     \item Handle parsing errors gracefully (log and continue)

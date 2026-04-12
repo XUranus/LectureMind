@@ -111,19 +111,22 @@ Figure~\ref{fig:task-dag} illustrates the complete task dependency graph.
         \node[task, fill=green!10, below of=t3] (t4) {T4: Thumbnail\\Generation};
         
         % Level 3
-        \node[task, fill=yellow!10, below of=t4] (t5) {T5: Hybrid\\Chunking};
+        \node[task, fill=teal!10, below of=t4] (t5) {T5: Slide\\OCR};
         
         % Level 4
-        \node[task, fill=orange!10, below of=t5] (t6) {T6: Fine-Grained\\Knowledge};
+        \node[task, fill=yellow!10, below of=t5] (t6) {T6: Hybrid\\Chunking};
         
         % Level 5
-        \node[task, fill=red!10, below of=t6] (t7) {T7: Embed\\Knowledge};
+        \node[task, fill=orange!10, below of=t6] (t7) {T7: Fine-Grained\\Knowledge};
         
         % Level 6
-        \node[task, fill=purple!10, below of=t7] (t8) {T8: Coarse\\Summary};
+        \node[task, fill=red!10, below of=t7] (t8) {T8: Embed\\Knowledge};
         
         % Level 7
-        \node[task, fill=magenta!10, below of=t8] (t9) {T9: Mindmap};
+        \node[task, fill=purple!10, below of=t8] (t9) {T9: Coarse\\Summary};
+        
+        % Level 8
+        \node[task, fill=magenta!10, below of=t9] (t10) {T10: Mindmap};
         
         % Arrows
         \draw[arrow] (t3) -- (t4);
@@ -132,12 +135,13 @@ Figure~\ref{fig:task-dag} illustrates the complete task dependency graph.
         \draw[arrow] (t6) -- (t7);
         \draw[arrow] (t7) -- (t8);
         \draw[arrow] (t8) -- (t9);
+        \draw[arrow] (t9) -- (t10);
         
         % Note about T1 dependency
         \node[below of=t1, yshift=0.5cm, font=\footnotesize, align=center] {T1, T2, T3\\run in parallel};
-        \node[right of=t5, xshift=0.5cm, font=\footnotesize, align=left] {T5 reads T1\\output from DB};
+        \node[right of=t6, xshift=0.5cm, font=\footnotesize, align=left] {T6 reads T1\\output from DB};
     \end{tikzpicture}
-    \caption{Task Dependency Graph (DAG)}
+    \caption{Task Dependency Graph (DAG) --- 10 Tasks}
     \label{fig:task-dag}
 \end{figure}
 
@@ -149,7 +153,8 @@ The system uses several core data models to represent processed content:
     \item \textbf{Video:} Metadata about uploaded videos (title, duration, file path, processing status)
     \item \textbf{VideoTranscript:} ASR output with language detection and overall statistics
     \item \textbf{TranscriptSentence:} Individual sentences with timestamps, emotions, and language codes
-    \item \textbf{Thumbnail:} Screenshots extracted at slide transition points
+    \item \textbf{Thumbnail:} Screenshots extracted at slide transition points; stores both \texttt{image} (200px, web display) and \texttt{image\_high\_res} (1920px, OCR input)
+    \item \textbf{SlideOCR:} Text content extracted from high-resolution slide thumbnails via multimodal LLM
     \item \textbf{VideoSection:} Intelligent segments produced by hybrid chunking
     \item \textbf{KnowledgePoint:} Fine-grained knowledge extracted per section
     \item \textbf{KnowledgeSummary:} Coarse-grained lecture-level summary
