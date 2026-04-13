@@ -72,9 +72,9 @@ Table~\ref{tab:rag-eval} presents results from an evaluation run on a real lectu
     \centering
     \caption{RAG Mode Comparison --- Aggregate Metrics}
     \label{tab:rag-eval}
-    \begin{tabular}{@{}llllll@{}}
+    \begin{tabular}{@{}lccccc@{}}
         \toprule
-        \textbf{Mode} & \textbf{Avg Score} & \textbf{Accuracy} & \textbf{Completeness} & \textbf{Hallucination} & \textbf{Avg Latency} \\ \midrule
+        \textbf{Mode} & \textbf{Avg Score} & \textbf{Accuracy} & \textbf{Completeness} & \textbf{Hallucination} & \textbf{Latency} \\ \midrule
         LLM Direct   & 69.4 & 66.7\% & 66.7\% & 0.0\%  & 2866 ms \\
         Fast RAG     & 71.8 & 71.7\% & 68.3\% & 0.0\%  & 4767 ms \\
         Agentic RAG  & \textbf{74.2} & \textbf{72.8\%} & \textbf{71.1\%} & 11.1\% & 5227 ms \\ \bottomrule
@@ -142,52 +142,6 @@ Vector search completes in $<$100ms. The observed latency differences are domina
 All modes support streaming via Server-Sent Events, providing time-to-first-token well under 2 seconds regardless of total response time.
 
 The system runs efficiently on modest hardware (8-core CPU, 8GB RAM).
-
-
-\subsection{Processing Performance}
-
-We evaluated the system on 10 lecture videos ranging from 30 to 120 minutes in length. Table~\ref{tab:processing-performance} summarizes the results.
-
-\begin{table}[H]
-    \centering
-    \caption{Processing Performance (60-minute lectures, average)}
-    \label{tab:processing-performance}
-    \begin{tabular}{@{}lll@{}}
-        \toprule
-        \textbf{Task} & \textbf{Duration} & \textbf{Notes} \\ \midrule
-        T1: ASR Transcription & 90 s & Depends on audio quality \\
-        T2: HLS Encoding & 120 s & CPU-bound, 4 resolutions \\
-        T3: SSIM Detection & 80 s & Multithreaded (16 workers) \\
-        T4: Thumbnail Generation & 15 s & I/O-bound \\
-        T5: Hybrid Chunking & 5 s & In-memory processing \\
-        T6: Fine-Grained Knowledge & 60 s & 10 sections $\times$ 6 s each \\
-        T7: Embed Knowledge & 10 s & Batch embedding \\
-        T8: Coarse Summary & 8 s & Single LLM call \\
-        T9: Mindmap & 8 s & Single LLM call \\ \midrule
-        \textbf{Total} & \textbf{~6-8 min} & Parallel tasks overlap \\ \bottomrule
-    \end{tabular}
-\end{table}
-
-The total processing time is less than the sum of individual tasks because T1, T2, and T3 run in parallel.
-
-\subsection{Segmentation Quality}
-
-We manually evaluated segmentation quality on 5 lectures by comparing system output to expert-annotated boundaries:
-
-\begin{table}[H]
-    \centering
-    \caption{Segmentation Quality Metrics}
-    \begin{tabular}{@{}lll@{}}
-        \toprule
-        \textbf{Metric} & \textbf{Value} & \textbf{Description} \\ \midrule
-        Precision & 0.87 & Detected boundaries within $\pm$30s of ground truth \\
-        Recall & 0.82 & Ground truth boundaries detected by system \\
-        F1 Score & 0.84 & Harmonic mean \\
-        Avg. section duration & 6.5 min & Appropriate for knowledge extraction \\ \bottomrule
-    \end{tabular}
-\end{table}
-
-The hybrid approach outperformed slide-only segmentation (F1: 0.76) and silence-only segmentation (F1: 0.71) in ablation studies.
 
 % \subsection{Knowledge Extraction Quality}
 
