@@ -8,7 +8,7 @@ The RAG system exposes three query modes of increasing capability, connected by 
 \begin{table}[H]
     \centering
     \caption{RAG Query Modes}
-    \begin{tabular}{@{}llll@{}}
+    \begin{tabular}{@{}p{2.5cm}p{4cm}p{4cm}p{2.5cm}@{}}
         \toprule
         \textbf{Mode} & \textbf{Strategy} & \textbf{Fallback Trigger} & \textbf{Fallback To} \\ \midrule
         LLM Direct   & Pure LLM, no retrieval          & ---                              & --- \\
@@ -17,7 +17,7 @@ The RAG system exposes three query modes of increasing capability, connected by 
     \end{tabular}
 \end{table}
 
-The fallback chain ensures the system always returns a useful response. Fast RAG falls back when vector retrieval cannot find sufficiently relevant documents (minimum relevance threshold \texttt{MIN\_RELEVANCE\_THRESHOLD=0.3}, minimum document count \texttt{MIN\_DOCUMENTS\_REQUIRED=2}). Agentic RAG falls back to Fast RAG on agent-level failures and ultimately to LLM Direct if retrieval also fails.
+The fallback chain ensures the system always returns a useful response. Fast RAG falls back when vector retrieval cannot find sufficiently relevant documents (minimum relevance threshold \texttt{MIN\_\allowbreak RELEVANCE\_\allowbreak THRESHOLD=0.3}, minimum document count \texttt{MIN\_\allowbreak DOCUMENTS\_\allowbreak REQUIRED=2}). Agentic RAG falls back to Fast RAG on agent-level failures and ultimately to LLM Direct if retrieval also fails.
 
 \subsection{Vector Database Design}
 
@@ -190,15 +190,15 @@ Six tools are available to the agent:
 \begin{table}[H]
     \centering
     \caption{Agent Tools}
-    \begin{tabular}{@{}lll@{}}
+    \begin{tabular}{@{}p{4.2cm}p{5.8cm}p{2.5cm}@{}}
         \toprule
         \textbf{Tool} & \textbf{Purpose} & \textbf{Input} \\ \midrule
-        search\_knowledge & Vector search on knowledge points \& transcripts & query string \\
-        search\_slides    & OCR-text search on slide content                & query string \\
-        get\_section\_details & Full section content & section order \\
-        get\_lecture\_summary & Overview + chapters & --- \\
-        list\_sections & All section titles/times & --- \\
-        get\_transcript\_at\_time & Transcript slice & start, end times \\ \bottomrule
+        \texttt{search\_knowledge} & Vector search on knowledge points \& transcripts & query string \\
+        \texttt{search\_slides}    & OCR-text search on slide content                & query string \\
+        \texttt{get\_section\_details} & Full section content & section order \\
+        \texttt{get\_lecture\_summary} & Overview + chapters & --- \\
+        \texttt{list\_sections} & All section titles/times & --- \\
+        \texttt{get\_transcript\_at\_time} & Transcript slice & start, end times \\ \bottomrule
     \end{tabular}
 \end{table}
 
