@@ -1,299 +1,56 @@
-\documentclass[11pt,a4paper]{article}
-
-% --- Encoding & fonts ---
+\documentclass[10pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}            % Better quality scalable fonts
-
-% --- Page geometry ---
-\usepackage[
-    a4paper,
-    top=2.5cm,
-    bottom=2.5cm,
-    left=3cm,
-    right=3cm,
-    headheight=14pt
-]{geometry}
-
-% --- Spacing ---
-\usepackage{setspace}
-\onehalfspacing
-
-% --- Math ---
 \usepackage{amsmath,amssymb,amsfonts}
-
-% --- Graphics ---
-\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{setspace}
 \usepackage{float}
 \usepackage{tikz}
+\usetikzlibrary{positioning}
 
-% --- Tables ---
-\usepackage{booktabs}
-\usepackage{array}
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\setstretch{1.2}
 
-% --- Code listings ---
-\usepackage{listings}
-\usepackage{xcolor}
+\title{LectureMind: An Algorithmic Framework for Lecture Video Understanding and Question Answering}
+\author{Wang Xingxiao, Ou Zhou, Li Yibin}
 
-% --- Headers and footers ---
-\usepackage{fancyhdr}
-
-% --- Hyperlinks (load late, before cleveref) ---
-\usepackage[
-    colorlinks=true,
-    linkcolor=black,
-    citecolor=black,
-    urlcolor=blue,
-    bookmarks=true,
-    pdftitle={LectureMind: AI-Powered Lecture Video Analysis and Summarization Platform},
-    pdfauthor={Group Report},
-    pdfsubject={COMP5575 Group Project Report}
-]{hyperref}
-
-% --- Typography ---
-\usepackage{microtype}
-
-% --- Paragraph formatting ---
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{6pt}
-
-% -------------------------------------------------------
-% Code listing style
-% -------------------------------------------------------
-\definecolor{codegreen}{rgb}{0,0.6,0}
-\definecolor{codegray}{rgb}{0.5,0.5,0.5}
-\definecolor{codepurple}{rgb}{0.58,0,0.82}
-\definecolor{backcolour}{rgb}{0.97,0.97,0.95}
-
-\lstdefinestyle{mystyle}{
-    backgroundcolor=\color{backcolour},
-    commentstyle=\color{codegreen},
-    keywordstyle=\color{blue}\bfseries,
-    numberstyle=\tiny\color{codegray},
-    stringstyle=\color{codepurple},
-    basicstyle=\ttfamily\footnotesize,
-    breakatwhitespace=false,
-    breaklines=true,
-    captionpos=b,
-    keepspaces=true,
-    numbers=left,
-    numbersep=5pt,
-    showspaces=false,
-    showstringspaces=false,
-    showtabs=false,
-    tabsize=2,
-    xleftmargin=12pt,
-    xrightmargin=0pt,
-    frame=single,
-    rulecolor=\color{gray!40},
-    framesep=4pt
-}
-\lstset{style=mystyle}
-
-\lstdefinelanguage{json}{
-    basicstyle=\ttfamily\footnotesize,
-    columns=fullflexible,
-    keepspaces=true,
-    breaklines=true,
-    showstringspaces=false,
-    string=[s]{"}{"},
-    stringstyle=\color{codepurple},
-    morecomment=[l]{//},
-    morecomment=[s]{/*}{*/},
-    morestring=[b]"
-}
-
-\lstdefinelanguage{text}{
-    basicstyle=\ttfamily\footnotesize,
-    columns=fullflexible,
-    keepspaces=true,
-    breaklines=true,
-    showstringspaces=false
-}
-
-% -------------------------------------------------------
-% Page style
-% -------------------------------------------------------
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\small\textit{LectureMind: AI-Powered Lecture Video Analysis}}
-\fancyhead[R]{\small COMP5575 Group Project}
-\fancyfoot[C]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\footrulewidth}{0pt}
-
-% Plain style for title page / first page
-\fancypagestyle{plain}{
-    \fancyhf{}
-    \fancyfoot[C]{\thepage}
-    \renewcommand{\headrulewidth}{0pt}
-}
-
-% -------------------------------------------------------
-% Section title formatting
-% -------------------------------------------------------
-\usepackage{titlesec}
-\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}[\titlerule]
-\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
-\titleformat{\subsubsection}{\normalsize\itshape\bfseries}{\thesubsubsection}{1em}{}
-\titlespacing*{\section}{0pt}{16pt}{8pt}
-\titlespacing*{\subsection}{0pt}{12pt}{6pt}
-\titlespacing*{\subsubsection}{0pt}{10pt}{4pt}
-
-% -------------------------------------------------------
-% Caption formatting
-% -------------------------------------------------------
-\usepackage[
-    font=small,
-    labelfont=bf,
-    labelsep=period
-]{caption}
-
-% -------------------------------------------------------
-% Document
-% -------------------------------------------------------
 \begin{document}
+\maketitle
 
-% ===== Title Page =====
-\begin{titlepage}
-    \centering
-    \vspace*{2cm}
-
-    {\Large \textbf{The Hong Kong Polytechnic University}}\\[0.4cm]
-    {\large Department of Computing}\\[1.5cm]
-
-    \rule{\linewidth}{0.5pt}\\[0.4cm]
-    {\LARGE \bfseries LectureMind: AI-Powered Lecture Video Analysis\\[0.3cm] and Summarization Platform}\\[0.4cm]
-    \rule{\linewidth}{0.5pt}\\[1.5cm]
-
-    {\large \textbf{COMP5575 -- Group Project Report}}\\[2cm]
-
-    \begin{tabular}{ll}
-        \textbf{Group Members:} & Author A \\
-                                & Author B \\
-                                & Author C \\[1cm]
-        \textbf{Course:}        & COMP5575 \\[0.4cm]
-        \textbf{Semester:}      & 2025 Fall \\[0.4cm]
-        \textbf{Submission:}    & \today \\
-    \end{tabular}
-
-    \vfill
-
-    {\small \textit{Submitted in partial fulfilment of the requirements for COMP5575}}
-\end{titlepage}
-
-% ===== Abstract =====
-\newpage
-\thispagestyle{plain}
-\begin{center}
-    {\large \bfseries Abstract}
-\end{center}
-\noindent
-Lecture videos are a fundamental component of modern education, yet students face significant challenges in efficiently navigating, reviewing, and extracting knowledge from lengthy lecture recordings. This report presents LectureMind, an advanced AI-powered platform that transforms raw lecture videos into structured, searchable, and interactive learning resources through a multi-stage processing pipeline.
-
-Our system employs a directed acyclic graph (DAG) of ten asynchronous tasks that process videos through: (1) SSIM-based slide transition detection using multithreaded structural similarity analysis, (2) automatic speech recognition via Alibaba DashScope Qwen3-ASR, (3) hybrid video chunking combining slide changes and silence gaps, (4) dual-resolution thumbnail generation (200px for web display, 1920px for OCR), (5) slide OCR using a multimodal LLM on high-resolution thumbnails, (6) fine-grained knowledge point extraction, (7) vector embedding into ChromaDB, (8) coarse-grained lecture summarization, and (9--10) hierarchical mindmap generation.
-
-The core innovation lies in our three-mode Retrieval-Augmented Generation (RAG) system: LLM Direct (no retrieval), Fast RAG (single-pass vector retrieval with quality-gated fallback), and Agentic RAG (multi-step LangGraph ReAct agent with six tools including slide-OCR search). A cascading fallback chain (Agentic RAG to Fast RAG to LLM Direct) ensures reliable answers under all conditions. An automated LLM-as-judge evaluation framework quantifies performance across question types: Agentic RAG achieves the highest average score (74.2/100) while Fast RAG maintains zero hallucination rate (0\%) through conservative retrieval thresholds. The entire system is containerised with Docker Compose and fully configurable via environment variables.
-
-\bigskip
-\noindent\textbf{Keywords:} Educational Technology, Video Analysis, Retrieval-Augmented Generation, Large Language Models, Speech Recognition, Slide OCR
-
-% ===== Table of Contents =====
-\newpage
-\tableofcontents
-\listoftables
-
-% ===== Chapters =====
-\newpage
 \input{chapters/01_introduction}
-\input{chapters/02_related_work}
-\input{chapters/03_architecture}
-\input{chapters/04_preprocessing}
-\input{chapters/05_chunking}
-\input{chapters/06_knowledge}
-\input{chapters/07_rag}
-\input{chapters/08_implementation}
-\input{chapters/09_evaluation}
-\input{chapters/10_conclusion}
+\input{chapters/03_overall_framework}
+\input{chapters/04_preprocessing_chunking}
+\input{chapters/05_knowledge_extraction}
+\input{chapters/06_rag}
+\input{chapters/07_evaluation}
+\input{chapters/08_conclusion}
 
-% ===== References =====
 \newpage
 \begin{thebibliography}{99}
 
-\bibitem{guo2014video}
-Guo, P.\,J., Kim, J., \& Rubin, R. (2014).
-How video production affects student engagement: An empirical study of MOOC videos.
-\textit{Proceedings of the 1st ACM Conference on Learning@Scale}, 41--50.
-
-\bibitem{copeland2009lecture}
-Copeland, S., \& Jones, R. (2009).
-Lecture capture: A new approach to teaching and learning?
-\textit{Proceedings of the 7th International Conference on Information Technology Based Higher Education and Training}, 512--517.
-
-\bibitem{cui2016automatic}
-Cui, Y., Hu, Y., \& Chen, W. (2016).
-Automatic segmentation of educational videos based on slide transition detection.
-\textit{IEEE International Conference on Multimedia and Expo}, 1--6.
-
-\bibitem{pan2020educational}
-Pan, Y., et al. (2020).
-Educational video segmentation using multimodal deep learning.
-\textit{IEEE Transactions on Learning Technologies}, 13(4), 789--801.
-
-\bibitem{chen2023llm}
-Chen, X., et al. (2023).
-LLM-based automatic quiz generation from lecture transcripts.
-\textit{Proceedings of the ACM Conference on Learning@Scale}, 112--124.
-
 \bibitem{lewis2020retrieval}
-Lewis, P., et al. (2020).
-Retrieval-augmented generation for knowledge-intensive NLP tasks.
-\textit{Advances in Neural Information Processing Systems}, 33, 9459--9474.
-
-\bibitem{lee2021textbook}
-Lee, J., \& Kim, S. (2021).
-Textbook question answering using retrieval-augmented generation.
-\textit{Proceedings of the NAACL-HLT}, 2345--2356.
-
-\bibitem{wang2022lecture}
-Wang, H., et al. (2022).
-LectureQA: A dataset and model for question answering on lecture videos.
-\textit{Proceedings of the ACL}, 4567--4580.
-
-\bibitem{xu2017video}
-Xu, D., et al. (2017).
-Video question answering via gradually refined attention over appearance and motion.
-\textit{Proceedings of the ACM Multimedia}, 1645--1653.
-
-\bibitem{li2023zero}
-Li, J., et al. (2023).
-Zero-shot video question answering using pretrained language models.
-\textit{Proceedings of the CVPR}, 12345--12356.
-
-\bibitem{hoffmann2011knowledge}
-Hoffmann, R., et al. (2011).
-Knowledge-based weak supervision for information extraction of overlapping relations.
-\textit{Proceedings of the ACL-HLT}, 541--550.
-
-\bibitem{gutierrez2023llm}
-Gutierrez, B., et al. (2023).
-LLM-based concept extraction from educational texts.
-\textit{Proceedings of the EDM}, 234--245.
-
-\bibitem{pan2023ontology}
-Pan, S., et al. (2023).
-Ontology construction using large language models.
-\textit{Proceedings of the ISWC}, 567--584.
+Lewis, P., Perez, E., Piktus, A., et al. (2020). Retrieval-augmented generation for knowledge-intensive NLP tasks. \textit{Advances in Neural Information Processing Systems}, 33, 9459--9474.
 
 \bibitem{wang2004image}
-Wang, Z., Bovik, A.\,C., Sheikh, H.\,R., \& Simoncelli, E.\,P. (2004).
-Image quality assessment: from error visibility to structural similarity.
-\textit{IEEE Transactions on Image Processing}, 13(4), 600--612.
+Wang, Z., Bovik, A. C., Sheikh, H. R., \& Simoncelli, E. P. (2004). Image quality assessment: From error visibility to structural similarity. \textit{IEEE Transactions on Image Processing}, 13(4), 600--612.
 
 \bibitem{reimers2019sentence}
-Reimers, N., \& Gurevych, I. (2019).
-Sentence-BERT: Sentence embeddings using Siamese BERT-networks.
-\textit{Proceedings of the EMNLP-IJCNLP}, 3982--3992.
+Reimers, N., \& Gurevych, I. (2019). Sentence-BERT: Sentence embeddings using Siamese BERT-networks. \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, 3982--3992.
+
+\bibitem{ren2025videorag}
+Ren, X., Xu, L., Xia, L., et al. (2025). VideoRAG: Retrieval-augmented generation with extreme long-context videos. \textit{arXiv preprint arXiv:2502.01549}.
+
+\bibitem{rege2026agentic}
+Rege, A., Sadhu, A., Li, Y., et al. (2026). Agentic Very Long Video Understanding. \textit{arXiv preprint arXiv:2601.18157}.
+
+\bibitem{gao2023rag}
+Gao, Y., Xiong, Y., Gao, X., et al. (2023). Retrieval-augmented generation for large language models: A survey. \textit{arXiv preprint arXiv:2312.10997}, 2(1), 32.
+
+\bibitem{barnett2024failure}
+Barnett, S., Kurniawan, S., Thudumu, S., et al. (2024). Seven failure points when engineering a retrieval augmented generation system. \textit{Proceedings of the IEEE/ACM 3rd International Conference on AI Engineering-Software Engineering for AI}, 194--199.
 
 \end{thebibliography}
 

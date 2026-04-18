@@ -1,38 +1,28 @@
 \section{Introduction}
-\label{sec:introduction}
 
-\subsection{Background and Motivation}
+\subsection{Background}
 
-The rapid growth of online education and remote learning has led to an unprecedented accumulation of lecture video content. Universities worldwide have recorded thousands of hours of lectures, making them available to students through learning management systems. However, this abundance of content presents a paradox: while more educational resources are available than ever before, students struggle to efficiently navigate, review, and extract knowledge from lengthy video recordings.
+Lecture videos have become a standard medium for higher education, online learning, and professional training. A single course may contain many hours of recorded material, often accompanied by slides, spoken explanations, and informal examples. While this abundance improves access, it also creates a navigation problem: students rarely need the entire video at once. More often, they want to locate a definition, revisit an explanation, compare related concepts, or ask a targeted question about a specific lecture segment. Conventional video players offer only linear playback and coarse time-based seeking, which makes content review inefficient for knowledge-intensive subjects.
 
-As students who often watch lectures video playback, we identified several key challenges \cite{guo2014video}:
+This problem is especially visible in technical lectures. Important information is distributed across multiple modalities: the instructor's speech introduces concepts, the slides encode structure, and longer explanations may extend across several minutes without any obvious boundaries. A useful educational assistant must therefore do more than transcribe audio. It must segment the lecture into meaningful units, identify the knowledge contained in each unit, organize those units into a coherent structure, and support question answering grounded in lecture evidence.
 
-\begin{enumerate}
-    \item \textbf{Navigation Difficulty:} Linear video playback makes it time-consuming to locate specific topics or concepts within a lecture.
-    \item \textbf{Information Overload:} A typical 60-minute lecture contains dense information that is difficult to summarize and review efficiently.
-    \item \textbf{Passive Consumption:} Traditional video watching is a one-way experience without interactive engagement or comprehension verification.
-    \item \textbf{Review Inefficiency:} Preparing for examinations requires repeated viewing of relevant segments, which is labor-intensive without proper indexing.
-    \item \textbf{Question Resolution:} Students often have specific questions about lecture content but lack efficient means to find answers within video material.
-\end{enumerate}
+\subsection{Problem Definition}
 
-These challenges motivate the development of intelligent systems that can automatically process lecture videos, extract structured knowledge, and enable interactive querying. Recent advances in artificial intelligence, particularly in automatic speech recognition (ASR), and large language models (LLMs), provide the technological foundation for such a system.
+This report addresses the following problem: given a raw lecture video, how can we transform it into a structured and interactive learning resource that supports efficient review and accurate question answering? The goal is not only to summarize the video, but to bridge three levels of understanding:
 
-\subsection{Project Objectives}
+\begin{itemize}
+\item the \textit{temporal level}, where the system identifies meaningful lecture boundaries;
+\item the \textit{semantic level}, where the content is converted into explicit knowledge units;
+\item the \textit{interactive level}, where users can query the lecture and obtain grounded answers.
+\end{itemize}
 
-LectureMind aims to address the aforementioned challenges through the following objectives:
+To solve this problem, the system must handle noisy speech, sparse slide transitions, and the mismatch between lecture delivery and knowledge structure. A good segmentation method should not rely on a single cue, because slide changes alone are too coarse and silence alone is too unstable. Likewise, a question answering system should not depend on a single reasoning strategy, because some questions require direct recall while others demand retrieval or multi-step exploration.
 
-\begin{enumerate}
-    \item \textbf{Automatic Content Segmentation:} Detect slide transitions and segment lectures into meaningful topical sections without manual intervention.
-    \item \textbf{Accurate Transcription:} Generate sentence-level transcripts with precise timestamps for all spoken content.
-    \item \textbf{Knowledge Extraction:} Automatically identify and extract key concepts, terminology, and explanations from lecture content.
-    \item \textbf{Structured Summarization:} Produce multi-granularity summaries ranging from section-level knowledge points to lecture-level concept hierarchies.
-    \item \textbf{Interactive Querying:} Enable students to ask natural language questions and receive accurate, citation-backed answers grounded in lecture content.
-    \item \textbf{Visual Knowledge Representation:} Generate interactive mindmaps that provide hierarchical overviews of lecture concepts.
-\end{enumerate}
+\subsection{Method Overview}
 
-\subsection{System Overview}
+LectureMind is designed as a multi-stage algorithmic framework for lecture video understanding. The pipeline begins with speech transcription and visual analysis, then combines these signals to produce semantically meaningful lecture chunks. Each chunk is further processed to extract fine-grained knowledge points, which are later aggregated into higher-level summaries and a mindmap-like structure. On top of these structured representations, the system provides three question answering modes: direct answering without retrieval, single-pass retrieval-augmented generation, and agentic multi-step retrieval.
 
-LectureMind processes lecture videos through a multi-stage pipeline that transforms raw video input into an interactive knowledge base. Figure~\ref{fig:system-overview} illustrates the overall system architecture.
+Figure~\ref{fig:system-overview} summarizes this end-to-end transformation from raw video input to interactive educational output.
 
 \begin{figure}[H]
     \centering
@@ -41,28 +31,14 @@ LectureMind processes lecture videos through a multi-stage pipeline that transfo
         box/.style={rectangle, draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
         arrow/.style={->, >=stealth, thick}
     ]
-        % Input
         \node[box, fill=blue!10] (input) {Video Input};
-        
-        % Preprocessing
         \node[box, fill=green!10, below of=input] (preprocess) {Preprocessing\\ASR | HLS | SSIM};
-        
-        % Chunking
         \node[box, fill=yellow!10, below of=preprocess] (chunking) {Hybrid Chunking\\Slide + Silence + Semantic};
-        
-        % Knowledge
         \node[box, fill=orange!10, below of=chunking] (knowledge) {Knowledge Extraction\\Fine-grained | Coarse-grained};
-        
-        % Storage
         \node[box, fill=purple!10, below of=knowledge] (storage) {Vector Database\\ChromaDB};
-        
-        % Query
         \node[box, fill=red!10, below of=storage] (query) {RAG Query Engine\\Quick RAG | Agent};
-        
-        % Output
         \node[box, fill=cyan!10, below of=query] (output) {Interactive Output\\Chat | Mindmap | Citations};
-        
-        % Arrows
+
         \draw[arrow] (input) -- (preprocess);
         \draw[arrow] (preprocess) -- (chunking);
         \draw[arrow] (chunking) -- (knowledge);
@@ -74,18 +50,14 @@ LectureMind processes lecture videos through a multi-stage pipeline that transfo
     \label{fig:system-overview}
 \end{figure}
 
-The system employs a DAG-based async task pipeline that enables parallel processing where dependencies allow. Tasks with no dependencies (ASR transcription, HLS encoding, SSIM slide detection) execute concurrently, while downstream tasks (thumbnail generation, hybrid chunking, knowledge extraction) chain sequentially based on their data requirements.
+The central idea of the framework is that lecture understanding should be hierarchical. A lecture is first decomposed into segments, each segment is mapped to explicit knowledge, and the resulting knowledge is organized so that retrieval and reasoning can operate on units that are smaller than the whole lecture but richer than raw transcript sentences. This hierarchy makes it possible to support both efficient access and evidence-aware responses.
 
-\subsection{Key Contributions}
+\subsection{Contributions}
 
-This project makes the following technical contributions:
+The main contributions of this report are threefold.
 
-\begin{enumerate}
-    \item \textbf{Hybrid Video Chunking:} A novel segmentation algorithm that combines three complementary signals (slide changes, silence gaps, semantic similarity) to produce natural, topically coherent video sections.
-    
-    \item \textbf{Hierarchical Knowledge Extraction:} A two-tier approach to knowledge summarization that extracts fine-grained knowledge points per section and aggregates them into coarse-grained lecture-level summaries with concept hierarchies.
-    
-    \item \textbf{Dual-Mode RAG System:} Implementation of both Quick RAG for low-latency factual queries and a ReAct agent for complex multi-step reasoning, with five specialized tools for lecture content retrieval.
-    
-    \item \textbf{Citation-Backed Answers:} A grounding mechanism that links generated answers to specific video timestamps through structured citations, enabling students to verify information directly in the source material.
-\end{enumerate}
+\begin{itemize}
+\item We present an end-to-end method for transforming lecture videos into structured learning resources, covering segmentation, knowledge extraction, and grounded question answering.
+\item We propose a hybrid chunking strategy that combines slide transition cues with speech-based boundaries, improving robustness over single-signal segmentation.
+\item We introduce a three-mode retrieval-augmented answering framework that balances reasoning depth, response speed, and answer reliability through a cascading fallback design.
+\end{itemize}
