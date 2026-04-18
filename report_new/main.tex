@@ -1,0 +1,57 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{setspace}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\setstretch{1.2}
+
+\title{LectureMind: An Algorithmic Framework for Lecture Video Understanding and Question Answering}
+\author{Wang Xingxiao, Ou Zhou, Li Yibin}
+
+\begin{document}
+\maketitle
+
+\input{chapters/01_introduction}
+\input{chapters/03_overall_framework}
+\input{chapters/04_preprocessing_chunking}
+\input{chapters/05_knowledge_extraction}
+\input{chapters/06_rag}
+\input{chapters/07_evaluation}
+\input{chapters/08_conclusion}
+
+\newpage
+\begin{thebibliography}{99}
+
+\bibitem{lewis2020retrieval}
+Lewis, P., Perez, E., Piktus, A., et al. (2020). Retrieval-augmented generation for knowledge-intensive NLP tasks. \textit{Advances in Neural Information Processing Systems}, 33, 9459--9474.
+
+\bibitem{wang2004image}
+Wang, Z., Bovik, A. C., Sheikh, H. R., \& Simoncelli, E. P. (2004). Image quality assessment: From error visibility to structural similarity. \textit{IEEE Transactions on Image Processing}, 13(4), 600--612.
+
+\bibitem{reimers2019sentence}
+Reimers, N., \& Gurevych, I. (2019). Sentence-BERT: Sentence embeddings using Siamese BERT-networks. \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, 3982--3992.
+
+\bibitem{ren2025videorag}
+Ren, X., Xu, L., Xia, L., et al. (2025). VideoRAG: Retrieval-augmented generation with extreme long-context videos. \textit{arXiv preprint arXiv:2502.01549}.
+
+\bibitem{rege2026agentic}
+Rege, A., Sadhu, A., Li, Y., et al. (2026). Agentic Very Long Video Understanding. \textit{arXiv preprint arXiv:2601.18157}.
+
+\bibitem{gao2023rag}
+Gao, Y., Xiong, Y., Gao, X., et al. (2023). Retrieval-augmented generation for large language models: A survey. \textit{arXiv preprint arXiv:2312.10997}, 2(1), 32.
+
+\bibitem{barnett2024failure}
+Barnett, S., Kurniawan, S., Thudumu, S., et al. (2024). Seven failure points when engineering a retrieval augmented generation system. \textit{Proceedings of the IEEE/ACM 3rd International Conference on AI Engineering-Software Engineering for AI}, 194--199.
+
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,42 @@
+\section{Knowledge Extraction and Hierarchical Organization}
+
+\subsection{Fine-Grained Knowledge Extraction}
+
+After chunking, each lecture segment is converted into a set of explicit knowledge points. The purpose of this step is to move from continuous explanation to discrete instructional units. A knowledge point may represent a concept definition, a method description, a comparison, a causal relation, or a key takeaway. Because these units are extracted from semantically coherent chunks, they are more stable and interpretable than units extracted from arbitrary transcript windows.
+
+Fine-grained extraction serves two roles. First, it compresses the transcript into content that is easier to retrieve. Second, it surfaces the pedagogical structure of the lecture by making important concepts explicit. In contrast to simple keyword extraction, the objective here is not to list terms, but to recover the teaching intent of each segment.
+
+This design is particularly important for lecture material because teaching content often mixes definitions, motivation, examples, and procedural advice within the same local context. A useful knowledge representation should distinguish these functions rather than flatten them into a bag of terms.
+
+\subsection{From Chunk Content to Structured Knowledge}
+
+Each chunk contains transcript text and, when available, visual information derived from slide content. These inputs are jointly interpreted to produce a structured description of the chunk. A typical knowledge point includes a concise title, a natural-language summary, representative terms, and a temporal link back to the original lecture interval. Temporal grounding is important because it preserves traceability: retrieved knowledge can always be mapped back to the video evidence from which it was derived.
+
+The use of structured knowledge points also improves retrieval granularity. If the system only stores whole-section transcripts, semantically narrow questions may retrieve large and noisy contexts. By indexing compact knowledge units, the system can better match focused student questions such as requests for definitions, distinctions, or procedure summaries.
+
+\begin{table}[H]
+    \centering
+    \caption{Roles of different knowledge representations}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Representation} & \textbf{Granularity} & \textbf{Typical Use} \\ \midrule
+        Knowledge point & Fine-grained & Definition and fact retrieval \\
+        Section summary & Medium-grained & Local explanation and review \\
+        Lecture summary & Coarse-grained & Global orientation \\
+        Mindmap branch & Hierarchical & Conceptual navigation \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Coarse-Grained Summarization}
+
+Fine-grained knowledge alone does not provide a global view of the lecture. Students also need a higher-level summary that explains how local ideas fit together. For this reason, the extracted knowledge points are aggregated into coarse-grained summaries at the lecture or chapter level. These summaries describe the main themes, progression of topics, and overall instructional emphasis.
+
+The relationship between fine-grained and coarse-grained outputs is hierarchical rather than redundant. Fine-grained units preserve detail and support precise retrieval, while coarse-grained summaries support overview, orientation, and broader question answering. The two levels complement each other: one supports local access, the other supports global understanding.
+
+\subsection{Mindmap-Oriented Organization}
+
+The system further organizes extracted knowledge into a tree-like mindmap in which higher-level nodes represent major themes and lower-level nodes represent supporting concepts. This structure helps both review and retrieval by exposing the conceptual organization of the lecture more clearly than a flat list of facts, and it provides a more interpretable view of why a given part of the lecture is relevant.
+
+\subsection{From Linear Video to Structured Learning Material}
+
+Taken together, these operations transform the lecture from a linear stream into a layered knowledge resource. The original video remains the ground truth, but the system builds a semantic interface on top of it. This interface supports multiple learning behaviors: quick review through summaries, targeted lookup through knowledge points, and conceptual browsing through the hierarchical structure. The resulting representation is therefore a key prerequisite for grounded and flexible question answering.

@@ -1,0 +1,67 @@
+\section{Evaluation and Discussion}
+
+\subsection{Evaluation Goals}
+
+The evaluation focuses on three questions. First, does the hybrid preprocessing pipeline produce useful lecture segments? Second, does the hierarchical knowledge representation support meaningful retrieval? Third, how do the three answering modes differ in answer quality, robustness, and latency?
+
+The original system evaluation was conducted on lecture videos ranging from 30 to 120 minutes and included both segmentation assessment and question answering analysis.
+
+\subsection{Processing Efficiency}
+
+Although the report focuses on algorithms rather than deployment, processing cost still matters because the pipeline operates on long videos. On 60-minute lectures, average preprocessing and analysis time remained within a practical range, with the end-to-end pipeline typically finishing in about 8 to 10 minutes when tasks overlap. Speech transcription, slide detection, and visual processing dominate the early stages, while knowledge extraction and retrieval indexing add a smaller but still noticeable cost in later stages.
+
+\begin{table}[H]
+    \centering
+    \caption{Representative processing times for a 60-minute lecture}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Stage} & \textbf{Average Time} & \textbf{Main Driver} \\ \midrule
+        ASR transcription & 90 s & Audio length and quality \\
+        Slide detection & 80 s & Frame sampling and SSIM analysis \\
+        Thumbnail and slide processing & 80 s & Visual extraction and OCR \\
+        Hybrid chunking & 5 s & Boundary fusion in memory \\
+        Knowledge extraction and summary & 76 s & LLM-based semantic analysis \\
+        Indexing and mindmap generation & 18 s & Embedding and aggregation \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Segmentation Quality}
+
+Manual comparison against expert-annotated boundaries shows that the hybrid chunking strategy is more reliable than using either visual or speech cues alone. The system achieved a precision of 0.87, a recall of 0.82, and an F1 score of 0.84 on the evaluated lectures. In ablation analysis, slide-only segmentation reached an F1 score of 0.76, while silence-only segmentation reached 0.71.
+
+These results support the central assumption behind the method: lecture boundaries are best modeled by combining structural and temporal signals. Visual cues provide high-confidence major transitions, while speech cues recover smaller semantic units within long visual spans. The improvement over both single-signal baselines suggests that the two signals are complementary in the lecture domain.
+
+\subsection{Question Answering Performance}
+
+The three answering modes were compared using an automated evaluation setup spanning factual, conceptual, procedural, custom course-specific, and irrelevant questions. Aggregate results are summarized in Table~\ref{tab:rag-results}.
+
+\begin{table}[H]
+    \centering
+    \caption{Aggregate comparison of answering modes}
+    \label{tab:rag-results}
+    \begin{tabular}{@{}llllll@{}}
+        \toprule
+        \textbf{Mode} & \textbf{Avg. Score} & \textbf{Accuracy} & \textbf{Completeness} & \textbf{Hallucination} & \textbf{Avg. Latency} \\ \midrule
+        LLM Direct & 69.4 & 66.7\% & 66.7\% & 0.0\% & 2866 ms \\
+        Fast RAG & 71.8 & 71.7\% & 68.3\% & 0.0\% & 4767 ms \\
+        Agentic RAG & \textbf{74.2} & \textbf{72.8\%} & \textbf{71.1\%} & 11.1\% & 5227 ms \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+The table reveals a meaningful pattern. Agentic RAG achieves the best average quality, indicating that multi-step evidence gathering helps on complex queries. Fast RAG offers slightly lower quality but maintains zero hallucination in this evaluation, showing the value of conservative retrieval thresholds. Direct answering remains competitive on generic conceptual questions but is weaker for lecture-specific factual content.
+
+More broadly, retrieval is most valuable when the answer depends on lecture-specific evidence, while conceptual and procedural questions are often handled reasonably well even by direct answering. One important finding is that stronger reasoning does not automatically imply safer answers: Agentic RAG produced the only observed hallucination on a question whose correct response should have been an explicit admission of insufficient information.
+
+The evaluation also highlights a clear latency-quality trade-off. Direct answering is fastest because it avoids retrieval, Fast RAG remains relatively responsive, and Agentic RAG is slowest because it may perform multiple retrieval and reasoning steps before producing a final answer.
+
+\subsection{Algorithmic Takeaways}
+
+Three conclusions emerge from the evaluation.
+
+\begin{itemize}
+\item Hybrid chunking is a necessary foundation for later stages; better segment boundaries improve both knowledge extraction quality and retrieval precision.
+\item Hierarchical knowledge representation makes lecture retrieval more focused than using raw transcript text alone, especially for local factual questions.
+\item A multi-mode answering framework is preferable to any single mode because lecture questions vary widely in difficulty, specificity, and evidence requirements.
+\end{itemize}
+
+Overall, the results support the view that lecture intelligence should be built as a pipeline of aligned intermediate representations rather than a single end-to-end black box.

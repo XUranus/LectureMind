@@ -1,0 +1,46 @@
+\section{Three-Mode Retrieval-Augmented Question Answering}
+
+\subsection{Motivation}
+
+Lecture question answering differs from open-domain question answering in two important ways. First, the answer often depends on lecture-specific facts that are not reliably stored in the base model parameters. Second, students ask a broad range of questions, from simple factual queries to integrative conceptual questions that span multiple lecture segments. A single answering strategy is therefore unlikely to work equally well across all cases.
+
+LectureMind addresses this challenge with three answering modes: LLM Direct, Fast RAG, and Agentic RAG. These modes differ in how much external evidence they use and how much reasoning flexibility they allow.
+
+\subsection{LLM Direct}
+
+The direct mode answers the question without explicit retrieval from the lecture knowledge base. It is most suitable for generic or conceptual questions and has the lowest latency, but because it is not constrained by retrieved lecture evidence, it is also the weakest mode for highly lecture-specific queries.
+
+\subsection{Fast RAG}
+
+Fast RAG performs single-pass retrieval over indexed lecture representations before generation. The query is embedded and matched against stored knowledge points, section summaries, and slide-derived text using dense similarity search, after which the top relevant items are assembled into a compact evidence context. This gives Fast RAG a strong balance between speed and grounding: it works especially well for factual questions and local explanations, reduces hallucination risk through retrieved evidence, and remains more efficient than iterative reasoning, though it is less flexible for difficult queries that require multiple retrieval steps or explicit evidence synthesis.
+
+\subsection{Agentic RAG}
+
+Agentic RAG extends Fast RAG by allowing iterative reasoning and tool use. Rather than relying on a single retrieval step, it can search for knowledge, inspect slide-derived text, revisit sections, and refine evidence based on intermediate findings. This adaptive exploration makes it well suited for explanatory questions, cross-section comparisons, and multi-hop lecture reasoning, especially when the answer is distributed across several lecture segments or the first retrieval attempt is incomplete.
+
+Agentic RAG can be understood as retrieval guided by explicit actions rather than a single similarity lookup. Its effective evidence sources include semantic search over knowledge units, section-level details, slide-derived text, and lecture-level summaries for global orientation. The model does not need to use all evidence channels for every question; instead, tool use is driven by the structure of the query.
+
+\begin{table}[H]
+    \centering
+    \caption{Typical evidence sources used by the answering system}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Evidence Type} & \textbf{Best For} & \textbf{Role in Answering} \\ \midrule
+        Knowledge points & Local factual questions & Precise evidence grounding \\
+        Section content & Explanatory questions & Rich local context \\
+        Slide-derived text & Visual terms or notation & Recover visually expressed details \\
+        Lecture summary & Broad conceptual questions & Global context and orientation \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Cascading Fallback}
+
+Although agentic reasoning is powerful, it is not always necessary and may occasionally introduce instability. LectureMind therefore uses a cascading fallback strategy. The system first attempts the most capable path when appropriate, but can step down to a simpler mode if evidence is weak or the reasoning path becomes unreliable. In conceptual terms, the fallback chain can be written as
+
+\begin{equation}
+\text{Agentic RAG} \rightarrow \text{Fast RAG} \rightarrow \text{LLM Direct}.
+\end{equation}
+
+This design treats answering as a balance among three objectives: reasoning depth, response speed, and reliability. Agentic RAG maximizes flexibility, Fast RAG maximizes grounded efficiency, and Direct mode ensures that the system can still respond gracefully when retrieval evidence is limited.
+
+The fallback mechanism is therefore not merely a safety feature but part of the answering strategy itself. It ensures that the system can exploit richer reasoning when needed without forcing every query through the most expensive and potentially brittle path.

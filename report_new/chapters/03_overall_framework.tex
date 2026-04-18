@@ -1,0 +1,58 @@
+\section{Overall Framework}
+
+\subsection{Pipeline Structure}
+
+The LectureMind framework follows a progressive processing strategy. Starting from a raw lecture video, the system first derives two complementary signals: spoken content from automatic speech recognition and visual structure from frame-level slide analysis. These signals are fused to create lecture chunks that are better aligned with semantic transitions than either signal alone. The chunks then become the basic units for knowledge extraction, summary generation, and retrieval.
+
+At a high level, the pipeline can be viewed as four stages:
+
+\begin{itemize}
+\item \textbf{Multimodal preprocessing}: derive transcript and visual transition signals from the original video;
+\item \textbf{Semantic chunking}: combine visual and speech cues to partition the lecture into coherent sections;
+\item \textbf{Knowledge organization}: extract fine-grained knowledge points and aggregate them into higher-level structures;
+\item \textbf{Grounded interaction}: answer student questions using direct, retrieval-based, or agentic strategies.
+\end{itemize}
+
+This design reflects a simple principle: question answering quality depends heavily on the quality of the intermediate representation. If the lecture is poorly segmented or knowledge units are too coarse, retrieval becomes noisy and answers become less reliable. By contrast, if the lecture has already been reorganized into semantically meaningful units, downstream answering can operate on concise and interpretable evidence.
+
+The operational realization of this pipeline is a dependency-aware task graph. Figure~\ref{fig:task-dag} preserves the original ten-task DAG used by LectureMind to organize preprocessing, knowledge extraction, and summarization stages.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.3cm and 1.1cm,
+        task/.style={rectangle, draw, rounded corners, minimum width=2.45cm, minimum height=0.72cm, align=center, font=\footnotesize},
+        arrow/.style={->, >=stealth, thick}
+    ]
+        \node[task, fill=blue!10] (t2) at (0,0) {T2: HLS\\Encoding};
+        \node[task, fill=blue!10, left=of t2] (t1) {T1: ASR\\Transcription};
+        \node[task, fill=blue!10, right=of t2] (t3) {T3: SSIM\\Detection};
+
+        \node[task, fill=green!10, below=of t2] (t4) {T4: Thumbnail\\Generation};
+        \node[task, fill=teal!10, below of=t4] (t5) {T5: Slide\\OCR};
+        \node[task, fill=yellow!10, below of=t5] (t6) {T6: Hybrid\\Chunking};
+        \node[task, fill=orange!10, below of=t6] (t7) {T7: Fine-Grained\\Knowledge};
+        \node[task, fill=red!10, below of=t7] (t8) {T8: Embed\\Knowledge};
+        \node[task, fill=purple!10, below of=t8] (t9) {T9: Coarse\\Summary};
+        \node[task, fill=magenta!10, below of=t9] (t10) {T10: Mindmap};
+
+        \draw[arrow] (t3.south) |- (t4.east);
+        \draw[arrow] (t2) -- (t4);
+        \draw[arrow] (t1.south) |- (t4.west);
+        \draw[arrow] (t4) -- (t5);
+        \draw[arrow] (t5) -- (t6);
+        \draw[arrow] (t6) -- (t7);
+        \draw[arrow] (t7) -- (t8);
+        \draw[arrow] (t8) -- (t9);
+        \draw[arrow] (t9) -- (t10);
+
+        \node[left=1.2cm of t4, font=\scriptsize, align=center] {T1, T2, T3\\run in parallel};
+        \node[right=0.9cm of t6, font=\scriptsize, align=left] {T6 reads T1\\output from DB};
+    \end{tikzpicture}
+    \caption{Task Dependency Graph (DAG) --- 10 Tasks}
+    \label{fig:task-dag}
+\end{figure}
+
+The framework is guided by three design principles. First, it treats slide transitions and speech timing as complementary signals rather than competing ones, because lecture structure is not fully observable from either audio or video alone. Second, it adopts hierarchical knowledge representation, since raw transcript sentences are too fine-grained for lecture-level understanding while a single global summary is too coarse for targeted retrieval. Third, it uses adaptive answering, allowing the system to move between direct answering, fast retrieval, and more flexible agentic reasoning depending on the difficulty and specificity of the question.
+
+This design is especially suitable for the lecture domain, where content is long, temporally ordered, and pedagogically structured. A concept may be introduced in one place, motivated later, and revisited through examples several minutes afterward. By converting the video into grounded intermediate units such as chunks, knowledge points, and summarized sections, the system supports both navigation and reasoning without repeatedly processing the full transcript at query time. From an algorithmic perspective, the pipeline alternates between compression and selective expansion: raw multimodal input is compressed into structured knowledge, and only the most relevant evidence is expanded again when answering a question.
