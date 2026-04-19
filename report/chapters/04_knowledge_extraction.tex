@@ -1,0 +1,40 @@
+\section{Knowledge Extraction and Hierarchical Organization}
+
+\subsection{Fine-Grained Knowledge Extraction}
+
+Following this, the lectures are divided into individual sets of explicit knowledge points. In this case, the idea of transitioning from long-term explanations to smaller teaching segments that can be better stored, accessed and audited. A knowledge point can be defined as a concept explanation, method description, comparison analysis, cause-and-effect relationship elucidation, or just an essential takeaway in that part of content. Because these units are formed by semantically linked chunks rather than random transcript windows, it is often more understandable.
+
+Fine-grained extraction has two goals: Firstly, it is trimmed to reduce management complexity for the transcript. Secondly, to make the pedagogy Structure of the lecture clearer. Although simple keyword extraction lists keywords; However, this is not its purpose. The one we are looking for has an intuitive understanding of what was taught in this section of the class.
+
+Lecture materials usually consist of several parts: definitions, motivations, example problems and procedure explanation within a limited space. A good illustration needs to maintain an element of this system rather than flatten it all out.
+
+\subsection{From Chunk Content to Structured Knowledge}
+
+In each part, there is a transcript and slide shows as long as they are included. The integrated outputs of these will provide an organised account for that section. A typical knowledge point typically has the following five parts: short title, natural-language summary, representative terms, temporal links back to lectures in intervals; Time-grounding is necessary for the representation to be meaningful; when retrieving a knowledge point, there should still be an indicator pointing back to its origin in the video.
+
+Structured knowledge points also improve retrieval granularity. If the system can only store complete-transcript content, then a specific question will likely return with considerable surrounding noise. By building indexes on smaller knowledge units, the system will be able to find targeted students' questions, including definition inquiries, simple comparisons, etc., more easily.
+
+\begin{table}[H]
+    \centering
+    \caption{Roles of different knowledge representations}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Representation} & \textbf{Granularity} & \textbf{Typical Use} \\ \midrule
+        Knowledge point & Fine-grained & Definition and fact retrieval \\
+        Section summary & Medium-grained & Local explanation and review \\
+        Lecture summary & Coarse-grained & Global orientation \\
+        Mindmap branch & Hierarchical & Conceptual navigation \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Coarse-Grained Summarization}
+
+In refinement of knowledge, one cannot have an all-encompassing understanding in relation to the talk described here. All the parts of this idea are familiar to these students. Therefore, the abstracted knowledge units will be combined into coarse-grained summaries at a level of lectures or chapters. The main contents here are: key points; the order in which topics were presented; and the overall trend of the content.
+
+Fine-grained and coarse-grained outputs do not exhibit redundancy but are hierarchically related. Fine-grained units can maintain the details for precise retrieval; coarsegrain summary provides an overall view to assist searching widely. That is to say, one level has local access while the other helps people understand the overall situation better.
+
+\subsection{Mindmap-Oriented Organization}
+
+Further organise the obtained knowledge as a tree structure, where higher-order nodes are general topics and lower-order nodes contain specific examples or supporting information. Compared to a direct listing of facts, this structure is more suitable for checking the logical organisation of a lecture. It provides an intuitive explanation for why a certain part of the lectures are closely related to some questions.
+
+In short, they have changed the one-dimensional delivery of the lecture into multiple layers of knowledge resources. Video is still the source of the truth; however, through the construction of a semantical layer in this system. The second-level support for various forms of research: immediate recall through summarization; target the study area by searching; intuitively explore the tree-like structure. This construction enables the ground and flexibility of answer generation in the subsequent stages.

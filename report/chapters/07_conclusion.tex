@@ -1,0 +1,7 @@
+\section{Conclusion and Future Work}
+
+Overall, the results suggest that the design is effective. Hybrid chunking performs better than single-signal segmentation, hierarchical knowledge representation improves targeted retrieval, and the three answering modes provide a practical balance between speed, quality, and reliability. Among them, Agentic RAG performs best on more complex questions, while Fast RAG remains the safer and more conservative option when grounded responses are the priority.
+
+There are still some limitations. The current framework is centered on single-lecture understanding rather than course-level reasoning across many videos. The quality of knowledge extraction also depends on the quality of speech transcription and slide content. In addition, the agentic mode can become overconfident when the available evidence is incomplete, so answer calibration is still an open issue.
+
+There are several natural directions for future work. One is cross-video retrieval, which would make the system more useful for course-level study by allowing concepts from different lectures to be retrieved and compared together. Another is more adaptive chunking that learns boundary decisions from data instead of relying mainly on heuristic fusion of multimodal signals. A third direction is richer multimodal knowledge representation, especially for equations, diagrams, and other slide content that is not fully reflected in speech. Pushing in these directions would make the system closer to a genuinely useful interactive learning assistant.

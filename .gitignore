@@ -15,3 +15,4 @@ server/app/logs
 server/app/*.log
 doc/
 opencode.json
+report_backup/

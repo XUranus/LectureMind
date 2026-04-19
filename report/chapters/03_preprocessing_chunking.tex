@@ -1,0 +1,53 @@
+\section{Lecture Preprocessing and Hybrid Chunking}
+
+\subsection{Speech Transcription as a Temporal Semantic Signal}
+
+Firstly, the time-annotated text of the lecture is extracted from the speech. The above transcription has two purposes simultaneously. From a semantic perspective, the core text to be employed subsequently in knowledge retrieval and response construction processes. In terms of time, It shows where the sentence or pause is placed to represent how teacher explains. Timestamped transcription can keep the languages of videos closer to times in order to answer whether a particular piece of information is supported by evidence later.
+
+Transcripts for our task are not the final result yet. It can be seen that the intermediate form. It can determine when an example begins or ends; what is stressed at that time by the lecturer; and how a referenced answer could relate back to the lecture sequence.
+
+Also, sentence-level timestamp data can provide assistance for the merging of close-by speech segments while preserving the Time-order information. After setting the boundaries of each chunk, the sentence belongs to this chunk after being grouped in combination with other similar sentences. Because an idea may be built up over several sentences and presented clearly in a single sentence in the lecture.
+
+\subsection{Slide Transition Detection with Structural Similarity}
+
+Visual structure is captured through slide transition detection. Let $I_t$ and $I_{t+1}$ denote two neighboring sampled frames. Their structural similarity is measured by the SSIM function:
+
+\begin{equation}
+\mathrm{SSIM}(I_t, I_{t+1}) =
+\frac{(2\mu_t\mu_{t+1} + c_1)(2\sigma_{t,t+1} + c_2)}
+{(\mu_t^2 + \mu_{t+1}^2 + c_1)(\sigma_t^2 + \sigma_{t+1}^2 + c_2)},
+\end{equation}
+
+where $\mu$ and $\sigma$ represent local means and variances, and $\sigma_{t,t+1}$ is the cross-covariance. A substantial drop in SSIM indicates that the frame structure has changed, which is often caused by a slide transition.
+
+This criterion works well for lecture videos because it reacts to structural changes instead of raw pixel differences. Small pointer movements or speaker motion usually do not change the overall slide layout very much, while switching to a new slide often causes a noticeable drop in structural similarity. In that sense, SSIM is more stable than naive frame differencing.
+
+The slide signal also carries an implicit discourse prior. When an instructor advances slides, the lecture often moves to a new subtopic, example, or proof step. Of course this is not always true, but it is still a useful structural anchor, especially when the transcript alone is ambiguous.
+
+\subsection{Role of Slide Text and OCR}
+
+Some lecture content appears mainly on the slides and is only partially described in speech. Some typical examples of content include equations, bulleted lists, symbols, and slideshows to build this section. Therefore, we need to convert the slides into text by means of OCR or multimodal interpretation for an additional text channel. This decision matter is to reduce the difference between what students see on the slide and what the teacher said.
+
+To improve the extraction of this additional signal. The student may inquire about a term presented on a slide after the instructor initially mentioned it differently during lecture time. Keep the slide text as supplementary proof, so these situations are more manageable.
+
+\subsection{Hybrid Chunking}
+
+Slide transitions alone do not define all meaningful boundaries. A single slide may cover several conceptual steps, and silence-based segmentation by itself may overreact to speaking rhythm and produce fragments that are too small to be useful. LectureMind therefore combines multiple cues so that the final segments are both structurally reasonable and semantically usable. We model chunking as boundary selection over candidates derived from visual and speech cues. Let $B_s$ denote slide-based candidates and $B_p$ denote pause-based candidates. A candidate boundary $b$ is scored by
+
+\begin{equation}
+S(b) = \alpha \, V(b) + \beta \, P(b) + \gamma \, C(b),
+\end{equation}
+
+where $V(b)$ measures visual evidence from slide change, $P(b)$ measures speech evidence such as pause duration or sentence completion, and $C(b)$ optionally reflects semantic coherence between neighboring regions. In practice, obvious slide changes are treated as high-confidence boundaries, while larger speech pauses introduce extra candidates inside long slide intervals. The final set is then filtered by coherence and duration constraints. This hybrid strategy keeps the main lecture structure intact while still recovering smaller within-slide topic shifts, so the resulting chunks are short enough for retrieval but still large enough to represent a coherent teaching unit.
+
+\begin{table}[H]
+    \centering
+    \caption{Comparison of boundary cues used in chunking}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Cue Type} & \textbf{Strength} & \textbf{Weakness} \\ \midrule
+        Slide transition & Strong structural anchor & Misses within-slide topic shifts \\
+        Speech pause & Captures local discourse rhythm & Sensitive to speaking style \\
+        Semantic coherence & Encourages topic consistency & Depends on transcript quality \\ \bottomrule
+    \end{tabular}
+\end{table}
