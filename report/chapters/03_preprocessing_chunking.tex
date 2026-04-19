@@ -2,11 +2,11 @@
 
 \subsection{Speech Transcription as a Temporal Semantic Signal}
 
-Firstly, the time-annotated text of the lecture is extracted from the speech. The above transcription has two purposes simultaneously. From a semantic perspective, the core text to be employed subsequently in knowledge retrieval and response construction processes. In terms of time, It shows where the sentence or pause is placed to represent how teacher explains. Timestamped transcription can keep the languages of videos closer to times in order to answer whether a particular piece of information is supported by evidence later.
+Firstly, the time-annotated text of the lecture is extracted from the speech. The above transcription has two purposes simultaneously. From a semantic perspective, it provides the core text to be employed subsequently in knowledge retrieval and response construction processes. In terms of time, it shows where each sentence or pause is placed to represent how the teacher explains. Timestamped transcription can keep the transcript time-aligned with the video in order to answer whether a particular piece of information is supported by evidence later.
 
-Transcripts for our task are not the final result yet. It can be seen that the intermediate form. It can determine when an example begins or ends; what is stressed at that time by the lecturer; and how a referenced answer could relate back to the lecture sequence.
+Transcripts for our task are not the final result yet; they can be seen as an intermediate form. They can determine when an example begins or ends; what is stressed at that time by the lecturer; and how a referenced answer could relate back to the lecture sequence.
 
-Also, sentence-level timestamp data can provide assistance for the merging of close-by speech segments while preserving the Time-order information. After setting the boundaries of each chunk, the sentence belongs to this chunk after being grouped in combination with other similar sentences. Because an idea may be built up over several sentences and presented clearly in a single sentence in the lecture.
+Also, sentence-level timestamp data can provide assistance for the merging of close-by speech segments while preserving the time-order information. After setting the boundaries of each chunk, sentences are grouped in combination with other similar sentences to form chunks. This is because an idea may be built up over several sentences and presented clearly in a single sentence in the lecture.
 
 \subsection{Slide Transition Detection with Structural Similarity}
 
@@ -26,9 +26,9 @@ The slide signal also carries an implicit discourse prior. When an instructor ad
 
 \subsection{Role of Slide Text and OCR}
 
-Some lecture content appears mainly on the slides and is only partially described in speech. Some typical examples of content include equations, bulleted lists, symbols, and slideshows to build this section. Therefore, we need to convert the slides into text by means of OCR or multimodal interpretation for an additional text channel. This decision matter is to reduce the difference between what students see on the slide and what the teacher said.
+Some lecture content appears mainly on the slides and is only partially described in speech. Some typical examples include equations, bulleted lists, symbols, and slideshows. Therefore, we need to convert the slides into text by means of OCR or multimodal interpretation to provide an additional text channel. This decision is made to reduce the difference between what students see on the slide and what the teacher said.
 
-To improve the extraction of this additional signal. The student may inquire about a term presented on a slide after the instructor initially mentioned it differently during lecture time. Keep the slide text as supplementary proof, so these situations are more manageable.
+To improve the extraction of this additional signal, the student may inquire about a term presented on a slide after the instructor initially mentioned it differently during lecture time. By keeping the slide text as supplementary proof, these situations become more manageable.
 
 \subsection{Hybrid Chunking}
 

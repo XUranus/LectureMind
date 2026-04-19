@@ -2,15 +2,15 @@
 
 Lecture question answering is a bit different from general open-domain QA. On the one hand, many answers depend on lecture-specific details that a base model is unlikely to know reliably. On the other hand, the questions themselves vary a lot. Some are simple factual checks, while others ask for explanations or comparisons across several lecture segments. Because of that, it is hard for a single answering strategy to work well in every case.
 
-The following three kinds of responses are introduced by LectureMind: LLM Direct, fast-RAG, and Agentic-RAG. They mainly differ in how much external evidence they use and how much reasoning freedom they allow.
+The following three kinds of responses are introduced by LectureMind: LLM Direct, fast RAG, and Agentic RAG. They mainly differ in how much external evidence they use and how much reasoning freedom they allow.
 
 \subsection{LLM Direct}
 
-Directly answering the problem is not through a specific query in the lecture knowledge base. Suitable for general or abstract type questions, and with a relatively lower response time. In addition, since there are no limitations on retrieving lecture evidence, this one is also least suitable to conduct high-level query of specific lectures.
+Direct answering does not involve a specific query to the lecture knowledge base. It is suitable for general or abstract type questions and has a relatively lower response time. In addition, since there are no limitations on retrieving lecture evidence, this mode is also least suitable for conducting high-level queries of specific lectures.
 
 \subsection{Fast RAG}
 
-FastRAG performs only one retrieval operation on the indexed lecture representations when generating answers. It embeds the queries to find corresponding densely related knowledge points, section summaries and slide-based text on a database. Then, the most popular items are organised into an evidence context and presented as answers. Practically speaking, in terms of Speed and Grounding Balance at the same time. Works well for factual questions and local answers; it helps reduce the occurrence of hallucinations by using retrieved evidence. However, it remains less efficient than iterative reasoning. Its main shortcoming is that it cannot deal with problems flexibly and has difficulty handling situations involving several retrievals or combining explicit evidence.
+FastRAG performs only one retrieval operation on the indexed lecture representations when generating answers. It embeds the queries to find corresponding densely-related knowledge points, section summaries, and slide-based text in a database. Then, the most relevant items are organised into an evidence context and presented as answers. Practically speaking, this mode achieves a balance between speed and grounding at the same time. It works well for factual questions and local answers, and helps reduce the occurrence of hallucinations by using retrieved evidence. However, it remains less effective for iterative reasoning. Its main shortcoming is that it cannot deal with problems flexibly and has difficulty handling situations involving several retrievals or combining explicit evidence.
 
 \subsection{Agentic RAG}
 
